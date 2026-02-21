@@ -9,7 +9,7 @@ import { LogIn, Eye, EyeOff, ShoppingBag, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function LoginPage() {
-    const { login, register } = useAuth();
+    const { login, register, resetPassword } = useAuth();
     const { settings, updateSettings } = useData();
     const router = useRouter();
 
@@ -25,6 +25,7 @@ export default function LoginPage() {
     const [settingsLoaded, setSettingsLoaded] = useState(false);
 
     const [isMounted, setIsMounted] = useState(false);
+    const [resetSent, setResetSent] = useState(false);
 
     useEffect(() => {
         setIsMounted(true);
@@ -94,19 +95,21 @@ export default function LoginPage() {
                 try {
                     await login(virtualEmail, cleanPassword);
                     router.push('/admin');
-                } catch (err: any) {
+                } catch (err: unknown) {
+                    const error = err as { code?: string; message?: string };
                     // In newer Firebase versions, invalid-credential is often returned 
                     // instead of user-not-found to prevent enumeration.
-                    const isNewUser = err.code === 'auth/user-not-found' ||
-                        err.code === 'auth/invalid-credential' ||
-                        err.message?.includes('user-not-found');
+                    const isNewUser = error.code === 'auth/user-not-found' ||
+                        error.code === 'auth/invalid-credential' ||
+                        error.message?.includes('user-not-found');
 
                     if (isNewUser) {
                         try {
                             await register(virtualEmail, cleanPassword);
                             router.push('/admin');
-                        } catch (regErr: any) {
-                            if (regErr.code === 'auth/email-already-in-use') {
+                        } catch (regErr: unknown) {
+                            const error = regErr as { code?: string };
+                            if (error.code === 'auth/email-already-in-use') {
                                 // User exists but password from authorize list doesn't match Firebase Auth
                                 setError('Usuario o contraseña incorrectos.');
                             } else {
@@ -119,15 +122,37 @@ export default function LoginPage() {
                     }
                 }
             }
-        } catch (err: any) {
+        } catch (err: unknown) {
+            const error = err as { code?: string };
             console.error('Auth error:', err);
-            if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+            if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
                 setError('Credenciales incorrectas.');
-            } else if (err.code === 'auth/email-already-in-use') {
+            } else if (error.code === 'auth/email-already-in-use') {
                 setError('Este correo ya está registrado.');
             } else {
                 setError('Error de acceso. Intenta de nuevo.');
             }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResetPassword = async () => {
+        const cleanEmail = emailInput.trim().toLowerCase();
+        if (!cleanEmail) {
+            setError('Por favor, ingresa tu correo electrónico primero.');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+        try {
+            await resetPassword(cleanEmail);
+            setResetSent(true);
+            setTimeout(() => setResetSent(false), 5000);
+        } catch (err: unknown) {
+            console.error('Reset error:', err);
+            setError('Error al enviar el correo de recuperación. Verifica el correo.');
         } finally {
             setLoading(false);
         }
@@ -221,6 +246,21 @@ export default function LoginPage() {
                             </div>
                         </div>
 
+                        {/* Success message */}
+                        <AnimatePresence>
+                            {resetSent && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -10 }}
+                                    className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl text-green-600 text-sm"
+                                >
+                                    <LogIn size={18} className="rotate-90" />
+                                    ¡Correo de recuperación enviado! Revisa tu bandeja.
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         {/* Error message */}
                         <AnimatePresence>
                             {error && (
@@ -253,16 +293,28 @@ export default function LoginPage() {
                         </button>
 
                         {!isFirstAdmin && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setLoginWithEmail(!loginWithEmail);
-                                    setError('');
-                                }}
-                                className="w-full text-center text-sm text-purple-600 font-medium hover:underline pt-2"
-                            >
-                                {loginWithEmail ? 'Usar Usuario de Acceso' : 'Usar Correo Electrónico'}
-                            </button>
+                            <div className="flex flex-col gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setLoginWithEmail(!loginWithEmail);
+                                        setError('');
+                                    }}
+                                    className="w-full text-center text-sm text-purple-600 font-medium hover:underline"
+                                >
+                                    {loginWithEmail ? 'Usar Usuario de Acceso' : 'Usar Correo Electrónico'}
+                                </button>
+
+                                {loginWithEmail && (
+                                    <button
+                                        type="button"
+                                        onClick={handleResetPassword}
+                                        className="w-full text-center text-xs text-gray-500 hover:text-purple-600 transition-colors"
+                                    >
+                                        ¿Olvidaste tu contraseña?
+                                    </button>
+                                )}
+                            </div>
                         )}
                     </form>
                 </div>
