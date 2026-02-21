@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useData } from '@/context/DataContext';
 import { ProductModal } from '@/components/ProductModal';
 import { Product } from '@/lib/types';
-import { Plus, Search, Edit2, Trash2, Tag, Archive, Printer } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Archive, Printer } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function InventoryPage() {
@@ -69,11 +69,16 @@ export default function InventoryPage() {
         setCurrentProduct(null);
     };
 
-    const handleSubmit = (data: Product) => {
+    const handleSubmit = (data: any) => {
         if (currentProduct) {
-            updateProduct(currentProduct.id, data);
+            updateProduct(currentProduct.id, data as Partial<Product>);
         } else {
-            addProduct({ ...data, id: Math.random().toString(36).substr(2, 9), active: true });
+            addProduct({
+                ...data,
+                id: Math.random().toString(36).substring(2, 9),
+                active: true,
+                images: data.images || []
+            } as Product);
         }
         handleCloseModal();
     };
@@ -106,11 +111,15 @@ export default function InventoryPage() {
                             placeholder="Buscar por nombre o código de barras..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
+                            aria-label="Buscar productos"
                             className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all"
                         />
                     </div>
                     <div className="flex gap-2">
-                        <select className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 outline-none focus:ring-2 focus:ring-purple-500">
+                        <select
+                            aria-label="Filtrar por categoría"
+                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 outline-none focus:ring-2 focus:ring-purple-500"
+                        >
                             <option value="">Todas las Categorías</option>
                             <option value="Fashion">Moda</option>
                             <option value="Personal Care">Cuidado Personal</option>
