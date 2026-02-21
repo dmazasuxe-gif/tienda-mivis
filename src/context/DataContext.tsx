@@ -1,0 +1,620 @@
+
+'use client';
+
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { AppData, Product, Sale, Customer, PaymentDetails } from '@/lib/types';
+import { db, auth } from '@/lib/firebase';
+import {
+    collection,
+    doc,
+    addDoc,
+    setDoc,
+    updateDoc,
+    deleteDoc,
+    onSnapshot,
+    query,
+    orderBy,
+    Timestamp,
+    writeBatch,
+    increment,
+    arrayUnion,
+} from 'firebase/firestore';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+
+// ============================================================
+// Types
+// ============================================================
+
+interface DataContextType extends AppData {
+    isLoading: boolean;
+    user: FirebaseUser | null;
+    error: string | null;
+    clearError: () => void;
+    addProduct: (product: Product) => Promise<string>;
+    updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
+    deleteProduct: (id: string) => Promise<void>;
+    processSale: (sale: Omit<Sale, 'id' | 'date'>) => Promise<void>;
+    addCustomer: (customer: Customer) => Promise<string>;
+    updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
+    deleteCustomer: (id: string) => Promise<void>;
+    deleteSale: (id: string) => Promise<void>;
+    recordPayment: (saleId: string, amount: number, method: string) => Promise<void>;
+    recordInstallmentPayment: (saleId: string, installmentNumbers: number[], method: string) => Promise<void>;
+    resetAllData: () => Promise<void>;
+    resetProducts: () => Promise<void>;
+    resetCustomers: () => Promise<void>;
+    resetSales: () => Promise<void>;
+    updateSettings: (settings: AppData['settings']) => Promise<void>;
+    getFinancialSummary: () => {
+        inventoryValue: number;
+        totalSales: number;
+        totalProfit: number;
+        pendingReceivables: number;
+    };
+}
+
+const DataContext = createContext<DataContextType | undefined>(undefined);
+
+// ============================================================
+// Collection names (single source of truth)
+// ============================================================
+
+const COLLECTIONS = {
+    products: 'products',
+    sales: 'sales',
+    customers: 'customers',
+    settings: 'settings',
+} as const;
+
+// ============================================================
+// Provider
+// ============================================================
+
+const DEFAULT_SETTINGS: AppData['settings'] = {
+    whatsapp: '51999509661',
+    instagram: 'https://www.instagram.com/mivis_studio',
+    tiktok: '',
+    facebook: '',
+    authorizedAdmins: [{ username: 'admin', password: 'adminpassword' }], // Base master user
+};
+
+export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [products, setProducts] = useState<Product[]>([]);
+    const [sales, setSales] = useState<Sale[]>([]);
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [settings, setSettings] = useState<AppData['settings']>(DEFAULT_SETTINGS);
+    const [isLoading, setIsLoading] = useState(true);
+    const [user, setUser] = useState<FirebaseUser | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    const clearError = () => setError(null);
+
+    // ────────────────────────────────────────────────
+    // Auth Listener
+    // ────────────────────────────────────────────────
+    useEffect(() => {
+        return onAuthStateChanged(auth, (u) => {
+            console.log('Firebase Auth State:', u ? `Authenticated as ${u.email}` : 'Not Authenticated');
+            setUser(u);
+        });
+    }, []);
+
+    // ────────────────────────────────────────────────
+    // Real-time Firestore Settings listener (Always active for LoginPage check)
+    // ────────────────────────────────────────────────
+    useEffect(() => {
+        const unsubSettings = onSnapshot(
+            doc(db, COLLECTIONS.settings, 'config'),
+            (snapshot) => {
+                if (snapshot.exists()) {
+                    setSettings(snapshot.data() as AppData['settings']);
+                } else {
+                    setSettings(DEFAULT_SETTINGS);
+                }
+            },
+            (error) => {
+                // If permissions are missing (not logged in), we just wait.
+                // This prevents the console error spam.
+                if (error.code === 'permission-denied') {
+                }
+            }
+        );
+        return () => unsubSettings();
+    }, []);
+
+    // ────────────────────────────────────────────────
+    // Real-time Firestore logic listeners (Auth protected)
+    // ────────────────────────────────────────────────
+    useEffect(() => {
+        // If not authenticated, don't start listeners (prevents permission errors)
+        if (!user) {
+            setProducts([]);
+            setSales([]);
+            setCustomers([]);
+            setIsLoading(false);
+            return;
+        }
+
+        setIsLoading(true);
+        let loadedCollections = 0;
+        const totalCollections = 3;
+
+        const checkReady = () => {
+            loadedCollections++;
+            if (loadedCollections >= totalCollections) {
+                setIsLoading(false);
+            }
+        };
+
+        // 1. Products listener
+        const unsubProducts = onSnapshot(
+            collection(db, COLLECTIONS.products),
+            (snapshot) => {
+                const items: Product[] = snapshot.docs.map(doc => ({
+                    ...doc.data(),
+                    id: doc.id,
+                } as Product));
+                setProducts(items);
+                checkReady();
+            },
+            (error) => {
+                console.error('Firestore products error:', error);
+                checkReady();
+            }
+        );
+
+        // 2. Sales listener
+        const unsubSales = onSnapshot(
+            query(collection(db, COLLECTIONS.sales), orderBy('date', 'desc')),
+            (snapshot) => {
+                const items: Sale[] = snapshot.docs.map(doc => ({
+                    ...doc.data(),
+                    id: doc.id,
+                } as Sale));
+                setSales(items);
+                checkReady();
+            },
+            (error) => {
+                console.error('Firestore sales error:', error);
+                checkReady();
+            }
+        );
+
+        // 3. Customers listener
+        const unsubCustomers = onSnapshot(
+            collection(db, COLLECTIONS.customers),
+            (snapshot) => {
+                const items: Customer[] = snapshot.docs.map(doc => ({
+                    ...doc.data(),
+                    id: doc.id,
+                } as Customer));
+                setCustomers(items);
+                checkReady();
+            },
+            (error) => {
+                console.error('Firestore customers error:', error);
+                checkReady();
+            }
+        );
+
+        return () => {
+            unsubProducts();
+            unsubSales();
+            unsubCustomers();
+        };
+    }, [user]);
+
+    // ────────────────────────────────────────────────
+    // Settings Operations
+    // ────────────────────────────────────────────────
+
+    const updateSettings = useCallback(async (newSettings: AppData['settings']) => {
+        try {
+            const docRef = doc(db, COLLECTIONS.settings, 'config');
+            await setDoc(docRef, newSettings);
+            console.log('Settings updated successfully');
+        } catch (error: any) {
+            console.error('Error updating settings:', error);
+            setError(`Error al actualizar configuración: ${error.message}`);
+            throw error;
+        }
+    }, []);
+
+    // ────────────────────────────────────────────────
+    // Product Operations
+    // ────────────────────────────────────────────────
+
+    const addProduct = useCallback(async (product: Product): Promise<string> => {
+        try {
+            console.log('Adding product to Firestore...', product.name);
+            const { id, ...data } = product; // eslint-disable-line @typescript-eslint/no-unused-vars
+            const cleanData = JSON.parse(JSON.stringify(data));
+            const docRef = await addDoc(collection(db, COLLECTIONS.products), cleanData);
+            console.log('Product added successfully with ID:', docRef.id);
+            return docRef.id;
+        } catch (error: any) {
+            console.error('Error adding product to Firestore:', error);
+            setError(`Error al guardar producto: ${error.message || 'Error desconocido'}`);
+            throw error;
+        }
+    }, []);
+
+    const updateProduct = useCallback(async (id: string, updates: Partial<Product>) => {
+        const docRef = doc(db, COLLECTIONS.products, id);
+        await updateDoc(docRef, updates);
+    }, []);
+
+    const deleteProduct = useCallback(async (id: string) => {
+        const docRef = doc(db, COLLECTIONS.products, id);
+        await deleteDoc(docRef);
+    }, []);
+
+    // ────────────────────────────────────────────────
+    // Customer Operations
+    // ────────────────────────────────────────────────
+
+    const addCustomer = useCallback(async (customer: Customer): Promise<string> => {
+        try {
+            console.log('Adding customer to Firestore...', customer.name);
+            const { id, ...data } = customer; // eslint-disable-line @typescript-eslint/no-unused-vars
+            const cleanData = JSON.parse(JSON.stringify(data));
+            const docRef = await addDoc(collection(db, COLLECTIONS.customers), cleanData);
+            console.log('Customer added successfully with ID:', docRef.id);
+            return docRef.id; // Return real Firestore ID
+        } catch (error: any) {
+            console.error('Error adding customer to Firestore:', error);
+            setError(`Error al guardar cliente: ${error.message || 'Error desconocido'}`);
+            throw error;
+        }
+    }, []);
+
+    const updateCustomer = useCallback(async (id: string, updates: Partial<Customer>) => {
+        const docRef = doc(db, COLLECTIONS.customers, id);
+        await updateDoc(docRef, updates);
+    }, []);
+
+    const deleteCustomer = useCallback(async (id: string) => {
+        try {
+            const docRef = doc(db, COLLECTIONS.customers, id);
+            await deleteDoc(docRef);
+        } catch (error: any) {
+            console.error('Error deleting customer:', error);
+            setError(`Error al eliminar cliente: ${error.message}`);
+        }
+    }, []);
+
+    // ────────────────────────────────────────────────
+    // Sale Operations
+    // ────────────────────────────────────────────────
+
+    const processSale = useCallback(async (saleData: Omit<Sale, 'id' | 'date'>) => {
+        try {
+            console.log('Processing sale in Firestore...', saleData);
+            const batch = writeBatch(db);
+
+            // 1. Create the sale document — strip undefined values (Firestore rejects them)
+            const saleRef = doc(collection(db, COLLECTIONS.sales));
+            const cleanSaleData = JSON.parse(JSON.stringify(saleData)); // removes undefined fields
+            const newSale = {
+                ...cleanSaleData,
+                date: new Date().toISOString(),
+                createdAt: Timestamp.now(),
+            };
+            batch.set(saleRef, newSale);
+
+            // 2. Update product stock
+            for (const item of saleData.items) {
+                const product = products.find(p => p.id === item.productId);
+                if (product) {
+                    const productRef = doc(db, COLLECTIONS.products, product.id);
+                    batch.update(productRef, { stock: product.stock - item.quantity });
+                }
+            }
+
+            // 3. Update customer debt if credit sale
+            if (saleData.type === 'Credit' && saleData.customerId) {
+                const customerRef = doc(db, COLLECTIONS.customers, saleData.customerId);
+                batch.update(customerRef, {
+                    balance: increment(saleData.remainingBalance || 0),
+                    history: arrayUnion(saleRef.id),
+                });
+            }
+
+            // Execute all operations atomically
+            await batch.commit();
+            console.log('Sale processed successfully');
+        } catch (error: any) {
+            console.error('Error processing sale in Firestore:', error);
+            setError(`Error al procesar venta: ${error.message || 'Error de conexión o permisos'}`);
+            throw error;
+        }
+    }, [products, customers]);
+
+    const deleteSale = useCallback(async (saleId: string) => {
+        try {
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale) return;
+
+            const batch = writeBatch(db);
+
+            // 1. Revert product stock
+            for (const item of sale.items) {
+                const product = products.find(p => p.id === item.productId);
+                if (product) {
+                    const productRef = doc(db, COLLECTIONS.products, product.id);
+                    batch.update(productRef, { stock: product.stock + item.quantity });
+                }
+            }
+
+            // 2. Revert customer balance if credit sale
+            if (sale.type === 'Credit' && sale.customerId) {
+                const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
+                batch.update(customerRef, {
+                    balance: increment(-(sale.remainingBalance || 0))
+                });
+                // Note: We don't strictly need to remove from history as it's a log, 
+                // but we could use arrayRemove if needed.
+            }
+
+            // 3. Delete the sale document
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+            batch.delete(saleRef);
+
+            await batch.commit();
+            console.log('Sale deleted and stocks reverted');
+        } catch (error: any) {
+            console.error('Error deleting sale:', error);
+            setError(`Error al eliminar venta: ${error.message}`);
+            throw error;
+        }
+    }, [sales, products]);
+
+    // ────────────────────────────────────────────────
+    // Payment Recording
+    // ────────────────────────────────────────────────
+
+    const recordInstallmentPayment = useCallback(async (saleId: string, installmentNumbers: number[], method: string) => {
+        try {
+            console.log('Recording installment payment...', { saleId, installments: installmentNumbers });
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale || !sale.installmentPlan) {
+                console.error('Sale or installment plan not found');
+                return;
+            }
+
+            const batch = writeBatch(db);
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+
+            // Calculate total to pay and update installment statuses
+            let totalPaid = 0;
+            const updatedInstallments = sale.installmentPlan.installments.map(inst => {
+                if (installmentNumbers.includes(inst.number) && inst.status === 'Pending') {
+                    totalPaid += inst.amount;
+                    return { ...inst, status: 'Paid' as const };
+                }
+                return inst;
+            });
+
+            if (totalPaid === 0) {
+                console.warn('No pending installments found to pay');
+                return;
+            }
+
+            // Record payment in history
+            const newPayment: PaymentDetails = {
+                method: method as PaymentDetails['method'],
+                amount: totalPaid,
+                date: new Date().toISOString(),
+            };
+
+            const newRemaining = Math.max(0, (sale.remainingBalance || 0) - totalPaid);
+
+            // Clean data before update (Firestore doesn't like undefined)
+            const updateData = JSON.parse(JSON.stringify({
+                installmentPlan: {
+                    ...sale.installmentPlan,
+                    installments: updatedInstallments
+                },
+                payments: [...(sale.payments || []), newPayment],
+                remainingBalance: newRemaining,
+                status: newRemaining <= 0 ? 'Paid' : 'Pending',
+            }));
+
+            batch.update(saleRef, updateData);
+
+            // Update customer balance
+            if (sale.customerId) {
+                const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
+                const customer = customers.find(c => c.id === sale.customerId);
+                if (customer) {
+                    batch.update(customerRef, {
+                        balance: Math.max(0, customer.balance - totalPaid),
+                    });
+                }
+            }
+
+            await batch.commit();
+            console.log('Installment payment recorded successfully');
+        } catch (error: any) {
+            console.error('Error recording installment payment:', error);
+            setError(`Error al registrar abono: ${error.message || 'Error de permisos o conexión'}`);
+            throw error;
+        }
+    }, [sales, customers]);
+
+    const recordPayment = useCallback(async (saleId: string, amount: number, method: string) => {
+        try {
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale) return;
+
+            const batch = writeBatch(db);
+
+            // Update sale
+            const newPayment: PaymentDetails = {
+                method: method as PaymentDetails['method'],
+                amount,
+                date: new Date().toISOString(),
+            };
+            const newRemaining = (sale.remainingBalance || 0) - amount;
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+            batch.update(saleRef, {
+                payments: [...(sale.payments || []), newPayment],
+                remainingBalance: newRemaining,
+                status: newRemaining <= 0 ? 'Paid' : 'Pending',
+            });
+
+            // Update customer balance
+            if (sale.customerId) {
+                const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
+                const customer = customers.find(c => c.id === sale.customerId);
+                if (customer) {
+                    batch.update(customerRef, {
+                        balance: customer.balance - amount,
+                    });
+                }
+            }
+
+            await batch.commit();
+        } catch (error) {
+            console.error('Error recording payment:', error);
+            throw error;
+        }
+    }, [sales, customers]);
+
+    // ────────────────────────────────────────────────
+    // Financial Summary
+    // ────────────────────────────────────────────────
+
+    const getFinancialSummary = useCallback(() => {
+        const inventoryValue = products.reduce((acc, p) => acc + (p.costPrice * p.stock), 0);
+        const totalSales = sales.reduce((acc, s) => acc + s.total, 0);
+
+        // Calculate profit. Fallback to dynamic calculation if profit is 0 (for old sales)
+        const totalProfit = sales.reduce((acc, s) => {
+            if (s.profit && s.profit > 0) return acc + s.profit;
+
+            // Re-calculate if profit is 0 or missing
+            const calculatedCost = s.items.reduce((itemAcc, item) => {
+                const product = products.find(p => p.id === item.productId);
+                return itemAcc + (product?.costPrice || 0) * item.quantity;
+            }, 0);
+            return acc + (s.total - calculatedCost);
+        }, 0);
+
+        const pendingReceivables = customers.reduce((acc, c) => acc + c.balance, 0);
+        return { inventoryValue, totalSales, totalProfit, pendingReceivables };
+    }, [products, sales, customers]);
+
+    // ────────────────────────────────────────────────
+    // System Reset Operations
+    // ────────────────────────────────────────────────
+
+    const resetProducts = useCallback(async () => {
+        try {
+            const batch = writeBatch(db);
+            products.forEach(p => {
+                batch.delete(doc(db, COLLECTIONS.products, p.id));
+            });
+            await batch.commit();
+        } catch (error: any) {
+            console.error('Error resetting products:', error);
+            setError(`Error al borrar productos: ${error.message}`);
+        }
+    }, [products]);
+
+    const resetCustomers = useCallback(async () => {
+        try {
+            const batch = writeBatch(db);
+            customers.forEach(c => {
+                batch.delete(doc(db, COLLECTIONS.customers, c.id));
+            });
+            await batch.commit();
+        } catch (error: any) {
+            console.error('Error resetting customers:', error);
+            setError(`Error al borrar clientes: ${error.message}`);
+        }
+    }, [customers]);
+
+    const resetSales = useCallback(async () => {
+        try {
+            // Re-fetch or use local sales
+            const batch = writeBatch(db);
+            sales.forEach(s => {
+                batch.delete(doc(db, COLLECTIONS.sales, s.id));
+            });
+            await batch.commit();
+        } catch (error: any) {
+            console.error('Error resetting sales:', error);
+            setError(`Error al borrar ventas: ${error.message}`);
+        }
+    }, [sales]);
+
+    const resetAllData = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            await resetSales();
+            await resetCustomers();
+            await resetProducts();
+            setIsLoading(false);
+            alert('¡Sistema reiniciado por completo!');
+        } catch (error: any) {
+            console.error('Error in total reset:', error);
+            setError(`Error en reinicio total: ${error.message}`);
+            setIsLoading(false);
+        }
+    }, [resetSales, resetCustomers, resetProducts]);
+
+    // ────────────────────────────────────────────────
+    // Provider
+    // ────────────────────────────────────────────────
+
+    return (
+        <DataContext.Provider value={{
+            products,
+            sales,
+            customers,
+            settings,
+            isLoading,
+            user,
+            addProduct,
+            updateProduct,
+            deleteProduct,
+            processSale,
+            addCustomer,
+            updateCustomer,
+            deleteCustomer,
+            deleteSale,
+            recordPayment,
+            recordInstallmentPayment,
+            resetAllData,
+            resetProducts,
+            resetCustomers,
+            resetSales,
+            updateSettings,
+            getFinancialSummary,
+            error,
+            clearError,
+        }}>
+            {children}
+
+            {/* Simple Error Overlay */}
+            {error && (
+                <div className="fixed bottom-4 right-4 z-[999] bg-red-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4">
+                    <div className="flex-1">
+                        <p className="font-bold">Error del Sistema</p>
+                        <p className="text-sm opacity-90">{error}</p>
+                    </div>
+                    <button onClick={clearError} className="p-2 hover:bg-white/20 rounded-lg">✕</button>
+                </div>
+            )}
+        </DataContext.Provider>
+    );
+};
+
+export const useData = () => {
+    const context = useContext(DataContext);
+    if (context === undefined) {
+        throw new Error('useData must be used within a DataProvider');
+    }
+    return context;
+};
