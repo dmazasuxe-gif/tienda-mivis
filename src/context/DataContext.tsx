@@ -114,8 +114,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             },
             (error) => {
                 // If permissions are missing (not logged in), we just wait.
-                // This prevents the console error spam.
                 if (error.code === 'permission-denied') {
+                    // console.warn('Settings access deferred');
+                } else {
+                    console.error('Firestore settings error:', error);
                 }
             }
         );
@@ -123,30 +125,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     // ────────────────────────────────────────────────
-    // Real-time Firestore logic listeners (Auth protected)
+    // Real-time Firestore Products listener (Public Access)
     // ────────────────────────────────────────────────
     useEffect(() => {
-        // If not authenticated, don't start listeners (prevents permission errors)
-        if (!user) {
-            setProducts([]);
-            setSales([]);
-            setCustomers([]);
-            setIsLoading(false);
-            return;
-        }
-
-        setIsLoading(true);
-        let loadedCollections = 0;
-        const totalCollections = 3;
-
-        const checkReady = () => {
-            loadedCollections++;
-            if (loadedCollections >= totalCollections) {
-                setIsLoading(false);
-            }
-        };
-
-        // 1. Products listener
         const unsubProducts = onSnapshot(
             collection(db, COLLECTIONS.products),
             (snapshot) => {
@@ -155,15 +136,40 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     id: doc.id,
                 } as Product));
                 setProducts(items);
-                checkReady();
             },
             (error) => {
-                console.error('Firestore products error:', error);
-                checkReady();
+                if (error.code === 'permission-denied') {
+                    // Public read might be disabled in Firebase Rules
+                    console.warn('Products access denied. Check Firebase Security Rules.');
+                } else {
+                    console.error('Firestore products error:', error);
+                }
             }
         );
+        return () => unsubProducts();
+    }, []);
 
-        // 2. Sales listener
+    useEffect(() => {
+        // If not authenticated, don't start listeners for sensitive data
+        if (!user) {
+            setSales([]);
+            setCustomers([]);
+            setIsLoading(false);
+            return;
+        }
+
+        setIsLoading(true);
+        let loadedCollections = 0;
+        const totalCollections = 2; // Sales and Customers
+
+        const checkReady = () => {
+            loadedCollections++;
+            if (loadedCollections >= totalCollections) {
+                setIsLoading(false);
+            }
+        };
+
+        // 1. Sales listener
         const unsubSales = onSnapshot(
             query(collection(db, COLLECTIONS.sales), orderBy('date', 'desc')),
             (snapshot) => {
@@ -180,7 +186,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         );
 
-        // 3. Customers listener
+        // 2. Customers listener
         const unsubCustomers = onSnapshot(
             collection(db, COLLECTIONS.customers),
             (snapshot) => {
@@ -198,7 +204,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         return () => {
-            unsubProducts();
             unsubSales();
             unsubCustomers();
         };
