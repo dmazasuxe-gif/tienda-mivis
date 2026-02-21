@@ -24,6 +24,7 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [settingsLoaded, setSettingsLoaded] = useState(false);
+    const [isProcessing, setIsProcessing] = useState(false); // To prevent double submits
 
     const [isMounted, setIsMounted] = useState(false);
     const [resetSent, setResetSent] = useState(false);
@@ -52,7 +53,12 @@ export default function LoginPage() {
         const cleanPassword = password.trim();
         const cleanEmail = emailInput.trim().toLowerCase();
 
-        if (loginWithEmail) {
+        if (isFirstAdmin) {
+            if (!cleanEmail || !cleanUsername || !cleanPassword) {
+                setError('Correo, usuario y contraseña son obligatorios para el registro inicial.');
+                return;
+            }
+        } else if (loginWithEmail) {
             if (!cleanEmail || !cleanPassword) {
                 setError('Correo y contraseña son obligatorios.');
                 return;
@@ -64,58 +70,58 @@ export default function LoginPage() {
             }
         }
 
+        if (loading || isProcessing) return;
+        setIsProcessing(true);
         setLoading(true);
         try {
-            if (loginWithEmail) {
-                // If it's a manual email login/register
+            if (loginWithEmail || isFirstAdmin) {
+                // Initial setup or Master Admin Login
                 if (isFirstAdmin) {
                     await register(cleanEmail, cleanPassword);
-                    // Initialize settings with this first admin
-                    const initialUsername = cleanEmail.split('@')[0];
+                    // Save first admin to settings
                     await updateSettings({
                         ...settings,
-                        authorizedAdmins: [{ username: initialUsername, password: cleanPassword }]
+                        authorizedAdmins: [{ username: cleanUsername, password: cleanPassword }]
                     });
                 } else {
                     await login(cleanEmail, cleanPassword);
                 }
                 router.push('/admin');
             } else {
-                // Double Security logic: Check list first
+                // Access User (Username + Password)
                 const authorizedFiltered = settings?.authorizedAdmins?.find(
                     a => a.username.trim().toLowerCase() === cleanUsername && a.password.trim() === cleanPassword
                 );
 
                 if (!authorizedFiltered) {
-                    setError('Usuario o contraseña no autorizados.');
+                    setError('Usuario o contraseña no autorizados o inexistentes.');
                     setLoading(false);
                     return;
                 }
 
+                // Internal users use a virtual email for Firebase Auth synchronization
                 const virtualEmail = `${cleanUsername}@mivisshoping.com`;
                 try {
                     await login(virtualEmail, cleanPassword);
                     router.push('/admin');
                 } catch (err: unknown) {
                     const error = err as { code?: string; message?: string };
-                    // In newer Firebase versions, invalid-credential is often returned 
-                    // instead of user-not-found to prevent enumeration.
                     const isNewUser = error.code === 'auth/user-not-found' ||
                         error.code === 'auth/invalid-credential' ||
                         error.message?.includes('user-not-found');
 
                     if (isNewUser) {
                         try {
+                            // Automatically sync authorized list to Firebase Auth
                             await register(virtualEmail, cleanPassword);
                             router.push('/admin');
                         } catch (regErr: unknown) {
-                            const error = regErr as { code?: string };
-                            if (error.code === 'auth/email-already-in-use') {
-                                // User exists but password from authorize list doesn't match Firebase Auth
+                            const regError = regErr as { code?: string };
+                            if (regError.code === 'auth/email-already-in-use') {
                                 setError('Usuario o contraseña incorrectos.');
                             } else {
                                 console.error('Auto-registration error:', regErr);
-                                setError('Error de sincronización de seguridad.');
+                                setError('Error de sincronización de seguridad. Contacta al admin principal.');
                             }
                         }
                     } else {
@@ -128,13 +134,18 @@ export default function LoginPage() {
             console.error('Auth error:', err);
             if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
                 setError('Credenciales incorrectas.');
-            } else if (error.code === 'auth/email-already-in-use') {
-                setError('Este correo ya está registrado.');
+            } else if (error.code === 'auth/email-already-in-use' && !isFirstAdmin) {
+                setError('Este correo ya está en uso. Usa el login normal.');
+            } else if (error.code === 'auth/email-already-in-use' && isFirstAdmin) {
+                setError('Este correo ya está registrado. Intenta iniciar sesión normalmente.');
+                setIsFirstAdmin(false);
+                setLoginWithEmail(true);
             } else {
-                setError('Error de acceso. Intenta de nuevo.');
+                setError('Error en el acceso. Verifica tus datos e intenta de nuevo.');
             }
         } finally {
             setLoading(false);
+            setIsProcessing(false);
         }
     };
 
@@ -180,11 +191,21 @@ export default function LoginPage() {
 
                 {/* Card */}
                 <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 p-8">
-                    <h2 className="text-xl font-bold text-gray-800 mb-6">
-                        {isFirstAdmin ? 'Configurar Administrador Maestro' : 'Iniciar Sesión'}
-                    </h2>
+                    <div className="mb-6">
+                        <h2 className="text-xl font-bold text-gray-800">
+                            {isFirstAdmin ? 'Configuración de Primer Uso' : 'Panel de Acceso'}
+                        </h2>
+                        <p className="text-xs text-gray-500 mt-1">
+                            {isFirstAdmin
+                                ? 'Crea la cuenta del Administrador Maestro.'
+                                : loginWithEmail
+                                    ? 'Acceso para Administrador Maestro'
+                                    : 'Acceso para Usuarios Autorizados'}
+                        </p>
+                    </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4" suppressHydrationWarning>
+                        {/* Email Field (Registration or Email Login) */}
                         {isFirstAdmin || loginWithEmail ? (
                             <div className="space-y-1.5">
                                 <label htmlFor="email" className="text-sm font-medium text-gray-700">
@@ -202,10 +223,11 @@ export default function LoginPage() {
                             </div>
                         ) : null}
 
-                        {!loginWithEmail && (
+                        {/* Username Field (Registration or Username Login) */}
+                        {(isFirstAdmin || !loginWithEmail) && (
                             <div className="space-y-1.5">
                                 <label htmlFor="username" className="text-sm font-medium text-gray-700">
-                                    Usuario
+                                    Usuario de Acceso
                                 </label>
                                 <input
                                     id="username"
