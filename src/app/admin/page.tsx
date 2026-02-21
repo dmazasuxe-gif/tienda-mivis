@@ -161,7 +161,7 @@ export default function Dashboard() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div>
                     <h1 className="text-4xl font-black text-gray-900 tracking-tight">
-                        Dashboard <span className="text-purple-600">Integral</span>
+                        Menu principal <span className="text-purple-600">Integral</span>
                     </h1>
                     <p className="text-gray-500 font-medium mt-1">Gestión avanzada para <span className="text-gray-800 font-bold">MivisShopping</span>.</p>
                 </div>

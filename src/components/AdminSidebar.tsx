@@ -10,7 +10,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
 const menuItems = [
-    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard },
+    { name: 'Menu principal', href: '/admin', icon: LayoutDashboard },
     { name: 'Inventario', href: '/admin/inventory', icon: ShoppingBag },
     { name: 'Ventas y Caja', href: '/admin/sales', icon: CreditCard },
     { name: 'Clientes y Créditos', href: '/admin/customers', icon: Users },
