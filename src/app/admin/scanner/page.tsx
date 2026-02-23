@@ -257,7 +257,9 @@ export default function ScannerPage() {
             </div>
 
             {/* Hidden elements */}
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+            <input ref={fileInputRef} type="file" accept="image/*"
+                /* eslint-disable-next-line react/no-unknown-property */
+                capture="environment"
                 onChange={handlePhotoCapture} className="hidden" aria-label="Capturar foto" />
             <div id="scanner-photo-decoder" className="hidden" aria-hidden="true" />
 
@@ -285,8 +287,8 @@ export default function ScannerPage() {
                         <button
                             onClick={triggerPhotoCapture}
                             className={`w-full max-w-xs px-8 py-4 rounded-2xl font-bold transition-all flex items-center justify-center gap-3 ${cameraAvailable
-                                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 text-base'
-                                    : 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-200 hover:shadow-xl hover:scale-[1.02] text-lg'
+                                ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 text-base'
+                                : 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-200 hover:shadow-xl hover:scale-[1.02] text-lg'
                                 }`}
                         >
                             <Camera size={cameraAvailable ? 20 : 26} />

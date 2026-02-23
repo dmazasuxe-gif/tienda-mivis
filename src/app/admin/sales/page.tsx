@@ -3,19 +3,44 @@
 
 import { useState, useMemo } from 'react';
 import { useData } from '@/context/DataContext';
-import { Product, SaleItem } from '@/lib/types';
+import { Product, Sale, SaleItem } from '@/lib/types';
 import {
     ShoppingCart, Plus, Minus, X, Search, User, CreditCard,
-    DollarSign, Package, UserPlus, Check, Loader2, Edit3
+    DollarSign, Package, UserPlus, Check, Loader2, Edit3, Clock, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function SalesPage() {
-    const { products, customers, processSale, addCustomer } = useData();
+    const { products, customers, processSale, addCustomer, sales, deleteSale } = useData();
+    const [view, setView] = useState<'pos' | 'history'>('pos');
     const [cart, setCart] = useState<SaleItem[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
     const [isProcessingSale, setIsProcessingSale] = useState(false);
+
+    // Filtered sales for history
+    const [historySearch, setHistorySearch] = useState('');
+    const filteredSales = sales.filter(s => {
+        if (!historySearch) return true;
+        const customer = customers.find(c => c.id === s.customerId);
+        return customer?.name.toLowerCase().includes(historySearch.toLowerCase()) ||
+            s.id.toLowerCase().includes(historySearch.toLowerCase()) ||
+            s.items.some(i => i.productName.toLowerCase().includes(historySearch.toLowerCase()));
+    });
+
+    // Group sales by date
+    const salesByDate = filteredSales.reduce((acc: Record<string, Sale[]>, sale) => {
+        const date = new Date(sale.date).toLocaleDateString();
+        if (!acc[date]) acc[date] = [];
+        acc[date].push(sale);
+        return acc;
+    }, {});
+
+    const handleDeleteSale = async (id: string) => {
+        if (window.confirm('¿Eliminar esta venta? El stock se devolverá.')) {
+            await deleteSale(id);
+        }
+    };
 
     // Checkout State
     const [paymentType, setPaymentType] = useState<'Cash' | 'Credit'>('Cash');
@@ -224,263 +249,368 @@ export default function SalesPage() {
     };
 
     return (
-        <div className="h-[calc(100vh-8rem)] flex flex-col md:flex-row gap-6">
-            {/* Product Catalog */}
-            <div className="flex-1 flex flex-col gap-4 min-h-0">
-                <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <h1 className="text-2xl font-bold text-gray-800">Punto de Venta</h1>
-                        <button
-                            onClick={() => setIsManualModalOpen(true)}
-                            className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl text-xs font-bold border border-orange-100 flex items-center gap-2 hover:bg-orange-100 transition-colors"
-                        >
-                            <Edit3 size={14} /> Venta Manual (Legacy)
-                        </button>
+        <div className="h-[calc(100vh-8rem)] flex flex-col gap-6">
+            {/* View Tabs */}
+            <div className="flex gap-2 p-1 bg-gray-100 rounded-2xl self-start">
+                <button
+                    onClick={() => setView('pos')}
+                    className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${view === 'pos' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Punto de Venta
+                </button>
+                <button
+                    onClick={() => setView('history')}
+                    className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${view === 'history' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Historial de Ventas
+                </button>
+            </div>
+
+            {view === 'history' ? (
+                <div className="flex-1 flex flex-col gap-4 min-h-0">
+                    <div className="flex justify-between items-center">
+                        <h1 className="text-2xl font-bold text-gray-800">Historial de Ventas</h1>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                            <input
+                                type="text"
+                                placeholder="Buscar por cliente, producto..."
+                                value={historySearch}
+                                onChange={(e) => setHistorySearch(e.target.value)}
+                                className="pl-10 pr-4 py-2 w-80 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+                            />
+                        </div>
                     </div>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                        <input
-                            type="text"
-                            placeholder="Buscar producto..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-10 pr-4 py-2 w-64 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all"
-                        />
+
+                    <div className="flex-1 overflow-y-auto space-y-8 pr-2">
+                        {Object.keys(salesByDate).length === 0 ? (
+                            <div className="h-40 flex flex-col items-center justify-center text-gray-400 space-y-2">
+                                <Clock size={48} className="opacity-20" />
+                                <p>No se encontraron ventas</p>
+                            </div>
+                        ) : (
+                            Object.entries(salesByDate).sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime()).map(([date, daySales]: [string, Sale[]]) => (
+                                <div key={date} className="space-y-3">
+                                    <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest sticky top-0 py-2 bg-gray-50 z-10">{date}</h3>
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                        {daySales.map((sale: Sale) => {
+                                            const customer = customers.find(c => c.id === sale.customerId);
+                                            return (
+                                                <motion.div
+                                                    key={sale.id}
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group"
+                                                >
+                                                    <div className="flex justify-between items-start mb-4">
+                                                        <div className="flex gap-3">
+                                                            <div className={`p-2 rounded-xl ${sale.type === 'Credit' ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'}`}>
+                                                                <DollarSign size={20} />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-gray-900">{customer?.name || 'Venta Directa'}</p>
+                                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">
+                                                                    {new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {sale.type === 'Credit' ? 'Crédito' : 'Efectivo'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-lg font-black text-purple-600">S/ {sale.total.toFixed(2)}</p>
+                                                            <span className={`text-[8px] font-bold px-2 py-0.5 rounded-lg uppercase ${sale.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                                {sale.status === 'Paid' ? 'Pagado' : 'Pendiente'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-2 border-t border-gray-50 pt-3 mb-4">
+                                                        {sale.items.map((item: SaleItem, idx: number) => (
+                                                            <div key={idx} className="flex justify-between text-xs text-gray-600">
+                                                                <span>{item.quantity}x {item.productName}</span>
+                                                                <span className="font-medium text-gray-500">S/ {(item.salePrice * item.quantity).toFixed(2)}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+
+                                                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => handleDeleteSale(sale.id)}
+                                                            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                            title="Anular Venta"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </motion.div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
-
-                <div className="flex-1 overflow-y-auto grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-1">
-                    {filteredProducts.map(product => (
-                        <motion.div
-                            key={product.id}
-                            whileHover={{ y: -2 }}
-                            onClick={() => addToCart(product)}
-                            className={`bg-white p-3 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all flex flex-col justify-between ${product.stock < 1 ? 'opacity-50 pointer-events-none' : ''
-                                }`}
-                        >
-                            {/* Product Image */}
-                            <div className="h-40 rounded-lg mb-2 overflow-hidden bg-gray-50">
-                                {product.images?.[0] ? (
-                                    /* eslint-disable-next-line @next/next/no-img-element */
-                                    <img
-                                        src={product.images[0]}
-                                        alt={product.name}
-                                        className="w-full h-full object-contain"
+            ) : (
+                <>
+                    <div className="flex-1 flex flex-col md:flex-row gap-6 min-h-0">
+                        {/* Product Catalog */}
+                        <div className="flex-1 flex flex-col gap-4 min-h-0">
+                            <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-4">
+                                    <h1 className="text-2xl font-bold text-gray-800">Catálogo</h1>
+                                    <button
+                                        onClick={() => setIsManualModalOpen(true)}
+                                        className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl text-xs font-bold border border-orange-100 flex items-center gap-2 hover:bg-orange-100 transition-colors"
+                                    >
+                                        <Edit3 size={14} /> Venta Manual
+                                    </button>
+                                </div>
+                                <div className="relative">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar producto..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-10 pr-4 py-2 w-64 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all"
                                     />
+                                </div>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-1">
+                                {filteredProducts.map(product => (
+                                    <motion.div
+                                        key={product.id}
+                                        whileHover={{ y: -2 }}
+                                        onClick={() => addToCart(product)}
+                                        className={`bg-white p-3 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:shadow-md transition-all flex flex-col justify-between ${product.stock < 1 ? 'opacity-50 pointer-events-none' : ''
+                                            }`}
+                                    >
+                                        {/* Product Image */}
+                                        <div className="h-40 rounded-lg mb-2 overflow-hidden bg-gray-50">
+                                            {product.images?.[0] ? (
+                                                /* eslint-disable-next-line @next/next/no-img-element */
+                                                <img
+                                                    src={product.images[0]}
+                                                    alt={product.name}
+                                                    className="w-full h-full object-contain"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+                                                    <Package size={28} />
+                                                    <span className="text-[10px] mt-1">Sin imagen</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">{product.name}</h3>
+                                            <p className="text-[10px] text-gray-400 mt-0.5">{product.category} • Stock: {product.stock}</p>
+                                        </div>
+                                        <div className="mt-2 flex justify-between items-center">
+                                            <span className="font-bold text-purple-600 text-sm">S/ {product.salePrice.toFixed(2)}</span>
+                                            <button className="p-1.5 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors" aria-label="Agregar al carrito">
+                                                <Plus size={14} />
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Cart Summary */}
+                        <div className="w-full md:w-96 bg-white rounded-2xl shadow-lg border border-gray-100 flex flex-col h-full">
+                            <div className="p-4 border-b border-gray-100 bg-gray-50 rounded-t-2xl">
+                                <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                    <ShoppingCart className="text-purple-600" size={20} />
+                                    Carrito
+                                    {cart.length > 0 && (
+                                        <span className="ml-auto text-xs font-medium bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">
+                                            {cart.reduce((a, b) => a + b.quantity, 0)} items
+                                        </span>
+                                    )}
+                                </h2>
+                            </div>
+
+                            {/* Client Name Input — always visible */}
+                            <div className="px-4 pt-3 pb-2 border-b border-gray-100">
+                                <label className="text-xs font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
+                                    <User size={12} /> Cliente
+                                </label>
+
+                                {/* Toggle between select and new */}
+                                <div className="flex gap-1 mb-2">
+                                    <button
+                                        onClick={() => { setClientInputMode('select'); setClientName(''); }}
+                                        className={`flex-1 text-[10px] py-1 rounded-lg font-medium transition-colors ${clientInputMode === 'select'
+                                            ? 'bg-purple-100 text-purple-700'
+                                            : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                                            }`}
+                                    >
+                                        Seleccionar
+                                    </button>
+                                    <button
+                                        onClick={() => { setClientInputMode('new'); setSelectedCustomerId(''); }}
+                                        className={`flex-1 text-[10px] py-1 rounded-lg font-medium transition-colors flex items-center justify-center gap-1 ${clientInputMode === 'new'
+                                            ? 'bg-purple-100 text-purple-700'
+                                            : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
+                                            }`}
+                                    >
+                                        <UserPlus size={10} /> Nuevo
+                                    </button>
+                                </div>
+
+                                {clientInputMode === 'select' ? (
+                                    <select
+                                        className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 transition-all"
+                                        value={selectedCustomerId}
+                                        onChange={(e) => setSelectedCustomerId(e.target.value)}
+                                        aria-label="Seleccionar cliente"
+                                    >
+                                        <option value="">Sin cliente (venta directa)</option>
+                                        {customers.map(c => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
                                 ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
-                                        <Package size={28} />
-                                        <span className="text-[10px] mt-1">Sin imagen</span>
+                                    <div className="relative space-y-2">
+                                        <input
+                                            type="text"
+                                            placeholder="Nombre completo (Obligatorio)"
+                                            value={clientName}
+                                            onChange={(e) => setClientName(e.target.value)}
+                                            className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 transition-all"
+                                        />
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                placeholder="Número (9 dígitos)"
+                                                maxLength={9}
+                                                value={clientContact}
+                                                onChange={(e) => {
+                                                    const val = e.target.value.replace(/\D/g, '');
+                                                    setClientContact(val);
+                                                }}
+                                                className="w-full p-2 pr-10 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 transition-all"
+                                            />
+                                            <button
+                                                onClick={handleSaveNewClient}
+                                                disabled={!clientName.trim() || clientContact.length !== 9 || savingClient}
+                                                className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40 transition-all"
+                                                title="Guardar cliente"
+                                                aria-label="Guardar cliente"
+                                            >
+                                                {savingClient ? (
+                                                    <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                                ) : (
+                                                    <Check size={14} />
+                                                )}
+                                            </button>
+                                        </div>
+
+                                        {/* Autocomplete suggestions */}
+                                        {customerSuggestions.length > 0 && clientName.trim() && (
+                                            <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
+                                                {customerSuggestions.map(c => (
+                                                    <button
+                                                        key={c.id}
+                                                        onClick={() => {
+                                                            setClientName(c.name);
+                                                            setSelectedCustomerId(c.id);
+                                                            setClientInputMode('select');
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center gap-2"
+                                                    >
+                                                        <User size={12} className="text-gray-400" />
+                                                        <span>{c.name}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {/* Saved message */}
+                                        {savedClientMsg && (
+                                            <p className="text-[10px] text-green-600 mt-1 font-medium flex items-center gap-1">
+                                                <Check size={10} /> {savedClientMsg}
+                                            </p>
+                                        )}
                                     </div>
                                 )}
                             </div>
-                            <div>
-                                <h3 className="font-semibold text-gray-800 text-sm line-clamp-1">{product.name}</h3>
-                                <p className="text-[10px] text-gray-400 mt-0.5">{product.category} • Stock: {product.stock}</p>
-                            </div>
-                            <div className="mt-2 flex justify-between items-center">
-                                <span className="font-bold text-purple-600 text-sm">S/ {product.salePrice.toFixed(2)}</span>
-                                <button className="p-1.5 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 transition-colors" aria-label="Agregar al carrito">
-                                    <Plus size={14} />
-                                </button>
-                            </div>
-                        </motion.div>
-                    ))}
-                </div>
-            </div>
 
-            {/* Cart Summary */}
-            <div className="w-full md:w-96 bg-white rounded-2xl shadow-lg border border-gray-100 flex flex-col h-full">
-                <div className="p-4 border-b border-gray-100 bg-gray-50 rounded-t-2xl">
-                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <ShoppingCart className="text-purple-600" size={20} />
-                        Carrito
-                        {cart.length > 0 && (
-                            <span className="ml-auto text-xs font-medium bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">
-                                {cart.reduce((a, b) => a + b.quantity, 0)} items
-                            </span>
-                        )}
-                    </h2>
-                </div>
-
-                {/* Client Name Input — always visible */}
-                <div className="px-4 pt-3 pb-2 border-b border-gray-100">
-                    <label className="text-xs font-semibold text-gray-500 mb-1.5 flex items-center gap-1">
-                        <User size={12} /> Cliente
-                    </label>
-
-                    {/* Toggle between select and new */}
-                    <div className="flex gap-1 mb-2">
-                        <button
-                            onClick={() => { setClientInputMode('select'); setClientName(''); }}
-                            className={`flex-1 text-[10px] py-1 rounded-lg font-medium transition-colors ${clientInputMode === 'select'
-                                ? 'bg-purple-100 text-purple-700'
-                                : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                                }`}
-                        >
-                            Seleccionar
-                        </button>
-                        <button
-                            onClick={() => { setClientInputMode('new'); setSelectedCustomerId(''); }}
-                            className={`flex-1 text-[10px] py-1 rounded-lg font-medium transition-colors flex items-center justify-center gap-1 ${clientInputMode === 'new'
-                                ? 'bg-purple-100 text-purple-700'
-                                : 'bg-gray-50 text-gray-400 hover:bg-gray-100'
-                                }`}
-                        >
-                            <UserPlus size={10} /> Nuevo
-                        </button>
-                    </div>
-
-                    {clientInputMode === 'select' ? (
-                        <select
-                            className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 transition-all"
-                            value={selectedCustomerId}
-                            onChange={(e) => setSelectedCustomerId(e.target.value)}
-                            aria-label="Seleccionar cliente"
-                        >
-                            <option value="">Sin cliente (venta directa)</option>
-                            {customers.map(c => (
-                                <option key={c.id} value={c.id}>{c.name}</option>
-                            ))}
-                        </select>
-                    ) : (
-                        <div className="relative space-y-2">
-                            <input
-                                type="text"
-                                placeholder="Nombre completo (Obligatorio)"
-                                value={clientName}
-                                onChange={(e) => setClientName(e.target.value)}
-                                className="w-full p-2 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 transition-all"
-                            />
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder="Número (9 dígitos)"
-                                    maxLength={9}
-                                    value={clientContact}
-                                    onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, '');
-                                        setClientContact(val);
-                                    }}
-                                    className="w-full p-2 pr-10 text-sm bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 transition-all"
-                                />
-                                <button
-                                    onClick={handleSaveNewClient}
-                                    disabled={!clientName.trim() || clientContact.length !== 9 || savingClient}
-                                    className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-40 transition-all"
-                                    title="Guardar cliente"
-                                    aria-label="Guardar cliente"
-                                >
-                                    {savingClient ? (
-                                        <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                                    ) : (
-                                        <Check size={14} />
-                                    )}
-                                </button>
-                            </div>
-
-                            {/* Autocomplete suggestions */}
-                            {customerSuggestions.length > 0 && clientName.trim() && (
-                                <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
-                                    {customerSuggestions.map(c => (
-                                        <button
-                                            key={c.id}
-                                            onClick={() => {
-                                                setClientName(c.name);
-                                                setSelectedCustomerId(c.id);
-                                                setClientInputMode('select');
-                                            }}
-                                            className="w-full text-left px-3 py-2 text-sm hover:bg-purple-50 transition-colors flex items-center gap-2"
-                                        >
-                                            <User size={12} className="text-gray-400" />
-                                            <span>{c.name}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-
-                            {/* Saved message */}
-                            {savedClientMsg && (
-                                <p className="text-[10px] text-green-600 mt-1 font-medium flex items-center gap-1">
-                                    <Check size={10} /> {savedClientMsg}
-                                </p>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                    {cart.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2 opacity-50">
-                            <ShoppingCart size={40} />
-                            <p className="text-sm">Carrito vacío</p>
-                        </div>
-                    ) : (
-                        cart.map((item) => {
-                            const prod = products.find(p => p.id === item.productId);
-                            return (
-                                <div key={item.productId} className="flex items-center gap-2 p-2 bg-gray-50 rounded-xl group hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-100 transition-all">
-                                    {/* Cart item thumbnail */}
-                                    <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
-                                        {prod?.images?.[0] ? (
-                                            /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img src={prod.images[0]} alt={item.productName} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                                <Package size={14} />
+                            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                                {cart.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2 opacity-50">
+                                        <ShoppingCart size={40} />
+                                        <p className="text-sm">Carrito vacío</p>
+                                    </div>
+                                ) : (
+                                    cart.map((item) => {
+                                        const prod = products.find(p => p.id === item.productId);
+                                        return (
+                                            <div key={item.productId} className="flex items-center gap-2 p-2 bg-gray-50 rounded-xl group hover:bg-white hover:shadow-sm border border-transparent hover:border-gray-100 transition-all">
+                                                {/* Cart item thumbnail */}
+                                                <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
+                                                    {prod?.images?.[0] ? (
+                                                        /* eslint-disable-next-line @next/next/no-img-element */
+                                                        <img src={prod.images[0]} alt={item.productName} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                                            <Package size={14} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <h4 className="font-medium text-xs text-gray-800 line-clamp-1">{item.productName}</h4>
+                                                    <p className="text-[10px] text-purple-600 font-bold">S/ {(item.salePrice * item.quantity).toFixed(2)}</p>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <button onClick={() => updateQuantity(item.productId, -1)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" aria-label="Reducir cantidad"><Minus size={12} /></button>
+                                                    <span className="text-xs font-semibold w-5 text-center">{item.quantity}</span>
+                                                    <button onClick={() => updateQuantity(item.productId, 1)} className="p-1 text-gray-400 hover:text-green-500 transition-colors" aria-label="Aumentar cantidad"><Plus size={12} /></button>
+                                                    <button onClick={() => removeFromCart(item.productId)} className="ml-1 p-1 text-gray-300 hover:text-red-500 transition-colors" aria-label="Eliminar del carrito"><X size={12} /></button>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-medium text-xs text-gray-800 line-clamp-1">{item.productName}</h4>
-                                        <p className="text-[10px] text-purple-600 font-bold">S/ {(item.salePrice * item.quantity).toFixed(2)}</p>
-                                    </div>
-                                    <div className="flex items-center gap-1.5">
-                                        <button onClick={() => updateQuantity(item.productId, -1)} className="p-1 text-gray-400 hover:text-red-500 transition-colors" aria-label="Reducir cantidad"><Minus size={12} /></button>
-                                        <span className="text-xs font-semibold w-5 text-center">{item.quantity}</span>
-                                        <button onClick={() => updateQuantity(item.productId, 1)} className="p-1 text-gray-400 hover:text-green-500 transition-colors" aria-label="Aumentar cantidad"><Plus size={12} /></button>
-                                        <button onClick={() => removeFromCart(item.productId)} className="ml-1 p-1 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100" aria-label="Eliminar del carrito"><X size={12} /></button>
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
+                                        );
+                                    })
+                                )}
+                            </div>
 
-                <div className="p-4 bg-gray-50 border-t border-gray-100 rounded-b-2xl space-y-3">
-                    {cart.length > 0 && (
-                        <>
-                            <div className="flex justify-between items-center text-xs text-gray-500">
-                                <span>Subtotal</span>
-                                <span>S/ {cartSubtotal.toFixed(2)}</span>
+                            <div className="p-4 bg-gray-50 border-t border-gray-100 rounded-b-2xl space-y-3">
+                                {cart.length > 0 && (
+                                    <>
+                                        <div className="flex justify-between items-center text-xs text-gray-500">
+                                            <span>Subtotal</span>
+                                            <span>S/ {cartSubtotal.toFixed(2)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center gap-4">
+                                            <span className="text-xs font-medium text-gray-500">Descuento (S/)</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                value={discount || ''}
+                                                onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                                                className="w-24 p-1.5 text-right text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-purple-500 transition-all font-bold text-red-500"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                                <div className="flex justify-between items-center text-lg font-bold text-gray-800 pt-1">
+                                    <span>Total</span>
+                                    <span>S/ {cartTotal.toFixed(2)}</span>
+                                </div>
+                                <button
+                                    onClick={() => setIsCheckoutOpen(true)}
+                                    disabled={cart.length === 0}
+                                    className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold shadow-lg shadow-gray-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                >
+                                    Procesar Venta
+                                </button>
                             </div>
-                            <div className="flex justify-between items-center gap-4">
-                                <span className="text-xs font-medium text-gray-500">Descuento (S/)</span>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="any"
-                                    value={discount || ''}
-                                    onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
-                                    className="w-24 p-1.5 text-right text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-purple-500 transition-all font-bold text-red-500"
-                                    placeholder="0.00"
-                                />
-                            </div>
-                        </>
-                    )}
-                    <div className="flex justify-between items-center text-lg font-bold text-gray-800 pt-1">
-                        <span>Total</span>
-                        <span>S/ {cartTotal.toFixed(2)}</span>
+                        </div>
                     </div>
-                    <button
-                        onClick={() => setIsCheckoutOpen(true)}
-                        disabled={cart.length === 0}
-                        className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold shadow-lg shadow-gray-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-                    >
-                        Procesar Venta
-                    </button>
-                </div>
-            </div>
+                </>
+            )}
 
             {/* Checkout Modal */}
             <AnimatePresence>
@@ -566,8 +696,9 @@ export default function SalesPage() {
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-2 gap-4">
                                             <div>
-                                                <label className="text-sm font-medium text-gray-600 mb-2 block">Cuotas</label>
+                                                <label className="text-sm font-medium text-gray-600 mb-2 block" htmlFor="installmentsInput">Cuotas</label>
                                                 <input
+                                                    id="installmentsInput"
                                                     type="number" min="1" max="24"
                                                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500"
                                                     value={installments || ''}
@@ -578,12 +709,12 @@ export default function SalesPage() {
                                                 />
                                             </div>
                                             <div>
-                                                <label className="text-sm font-medium text-gray-600 mb-2 block">Frecuencia</label>
+                                                <label className="text-sm font-medium text-gray-600 mb-2 block" htmlFor="frequencyInput">Frecuencia</label>
                                                 <select
+                                                    id="frequencyInput"
                                                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500"
                                                     value={frequency}
                                                     onChange={(e) => setFrequency(e.target.value as 'Weekly' | 'Bi-weekly' | 'Monthly')}
-                                                    aria-label="Frecuencia de pago"
                                                 >
                                                     <option value="Weekly">Semanal</option>
                                                     <option value="Bi-weekly">Quincenal</option>
@@ -592,8 +723,9 @@ export default function SalesPage() {
                                             </div>
                                         </div>
                                         <div>
-                                            <label className="text-sm font-medium text-gray-600 mb-2 block">Fecha Primer Pago</label>
+                                            <label className="text-sm font-medium text-gray-600 mb-2 block" htmlFor="startDateInput">Fecha Primer Pago</label>
                                             <input
+                                                id="startDateInput"
                                                 type="date"
                                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500"
                                                 value={startDate}

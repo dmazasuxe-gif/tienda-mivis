@@ -4,16 +4,14 @@
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { UIProvider, useUI } from '@/context/UIContext';
 import { AdminSidebar } from '@/components/AdminSidebar';
 import { useData } from '@/context/DataContext';
 
-export default function AdminLayout({
-    children,
-}: {
-    children: React.ReactNode;
-}) {
+function AdminLayoutContent({ children }: { children: React.ReactNode }) {
     const { user, loading: authLoading } = useAuth();
     const { isLoading: dataLoading } = useData();
+    const { isSidebarCollapsed } = useUI();
     const router = useRouter();
 
     // Redirect to login if not authenticated
@@ -46,11 +44,30 @@ export default function AdminLayout({
             <AdminSidebar />
 
             {/* Main Content Area */}
-            <main className="flex-1 pl-0 md:pl-64 transition-all duration-300">
+            <main
+                className={clsx(
+                    "flex-1 transition-all duration-300",
+                    isSidebarCollapsed ? "pl-0 md:pl-20" : "pl-0 md:pl-64"
+                )}
+            >
                 <div className="pt-16 md:pt-0 p-4 md:p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in zoom-in duration-500">
                     {children}
                 </div>
             </main>
         </div>
+    );
+}
+
+import clsx from 'clsx';
+
+export default function AdminLayout({
+    children,
+}: {
+    children: React.ReactNode;
+}) {
+    return (
+        <UIProvider>
+            <AdminLayoutContent>{children}</AdminLayoutContent>
+        </UIProvider>
     );
 }

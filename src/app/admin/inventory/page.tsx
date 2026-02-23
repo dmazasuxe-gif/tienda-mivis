@@ -188,7 +188,7 @@ export default function InventoryPage() {
                                             <button onClick={() => handleOpenModal(product)} className="text-purple-600 hover:text-purple-900 p-2 hover:bg-purple-50 rounded-lg transition-colors mr-2" title="Editar">
                                                 <Edit2 size={16} />
                                             </button>
-                                            <button onClick={() => deleteProduct(product.id)} className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded-lg transition-colors">
+                                            <button onClick={() => deleteProduct(product.id)} className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar Producto">
                                                 <Trash2 size={16} />
                                             </button>
                                         </td>

@@ -5,14 +5,10 @@ import { useState } from 'react';
 import { useData } from '@/context/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip,
-    ResponsiveContainer, AreaChart, Area
-} from 'recharts';
-import {
-    DollarSign, Package, Users, Activity, TrendingUp,
-    ShoppingCart, UserPlus, FileText, ArrowUpRight,
-    ArrowDownRight, CreditCard, Trash2, Eye, X, Download,
-    Calendar, Tag, User as UserIcon, CheckCircle2, Clock
+    DollarSign, Package, Users, Activity,
+    ShoppingCart, FileText, ArrowUpRight,
+    ArrowDownRight, CreditCard, Trash2, X,
+    Calendar, User as UserIcon, CheckCircle2, Clock
 } from 'lucide-react';
 import Link from 'next/link';
 import { Sale } from '@/lib/types';
@@ -70,28 +66,12 @@ const QuickAction = ({ icon: Icon, label, onClick, href, color }: any) => {
 };
 
 export default function Dashboard() {
-    const { getFinancialSummary, sales, deleteSale, customers } = useData();
+    const { getFinancialSummary, sales, deleteSale, customers, products } = useData();
     const summary = getFinancialSummary();
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
     const recentSales = sales.slice(0, 6);
-
-    // Calculate real sales data for the last 7 days
-    const last7Days = Array.from({ length: 7 }).map((_, i) => {
-        const d = new Date();
-        d.setDate(d.getDate() - i);
-        return d.toLocaleDateString('es-PE', { weekday: 'short' });
-    }).reverse();
-
-    const chartData = last7Days.map(day => {
-        const daySales = sales.filter(s => {
-            const saleDate = new Date(s.date).toLocaleDateString('es-PE', { weekday: 'short' });
-            return saleDate === day;
-        });
-        const total = daySales.reduce((acc, s) => acc + s.total, 0);
-        return { name: day, total };
-    });
 
     const handleDeleteSale = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -119,10 +99,10 @@ export default function Dashboard() {
             doc.roundedRect(15, 45, 180, 25, 3, 3, 'F');
             doc.setTextColor(50, 50, 50);
             doc.setFontSize(10);
-            doc.text(`Total Ventas: S/ ${summary.totalSales.toFixed(2)}`, 25, 55);
-            doc.text(`Ganancia Estimada: S/ ${summary.totalProfit.toFixed(2)}`, 25, 62);
-            doc.text(`Transacciones: ${sales.length}`, 120, 55);
-            doc.text(`Pendiente de Cobro: S/ ${summary.pendingReceivables.toFixed(2)}`, 120, 62);
+            doc.text(`Valor Stock: S/ ${summary.inventoryValue.toFixed(2)}`, 25, 55);
+            doc.text(`Total Ventas: S/ ${summary.totalSales.toFixed(2)}`, 25, 62);
+            doc.text(`Ganancia Neta: S/ ${summary.totalProfit.toFixed(2)}`, 120, 55);
+            doc.text(`Por Cobrar: S/ ${summary.pendingReceivables.toFixed(2)}`, 120, 62);
 
             // Table Data
             const tableRows = sales.flatMap(sale =>
@@ -181,37 +161,114 @@ export default function Dashboard() {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="Ventas Totales" value={`S/ ${summary.totalSales.toLocaleString()}`} icon={DollarSign} trend="up" trendValue="12.5%" color="purple" gradient="from-purple-600 to-pink-500" />
-                <StatCard title="Ganancia Neta" value={`S/ ${summary.totalProfit.toLocaleString()}`} icon={Activity} trend="up" trendValue="8.2%" color="green" gradient="from-emerald-500 to-teal-400" />
-                <StatCard title="Valor Stock" value={`S/ ${summary.inventoryValue.toLocaleString()}`} icon={Package} color="blue" gradient="from-blue-600 to-indigo-400" />
-                <StatCard title="Por Cobrar" value={`S/ ${summary.pendingReceivables.toLocaleString()}`} icon={CreditCard} trend="down" trendValue="2.4%" color="orange" gradient="from-orange-500 to-yellow-400" />
+                <StatCard
+                    title="Valor Stock"
+                    value={`S/ ${summary.inventoryValue.toFixed(2)}`}
+                    icon={Package}
+                    color="orange"
+                    gradient="from-orange-500 to-amber-500"
+                />
+                <StatCard
+                    title="Ventas Totales"
+                    value={`S/ ${summary.totalSales.toFixed(2)}`}
+                    icon={ShoppingCart}
+                    color="purple"
+                    gradient="from-purple-600 to-pink-600"
+                />
+                <StatCard
+                    title="Ganancia Neta"
+                    value={`S/ ${summary.totalProfit.toFixed(2)}`}
+                    icon={DollarSign}
+                    color="green"
+                    gradient="from-green-500 to-emerald-500"
+                />
+                <StatCard
+                    title="Por Cobrar"
+                    value={`S/ ${summary.pendingReceivables.toFixed(2)}`}
+                    icon={Users}
+                    color="blue"
+                    gradient="from-blue-500 to-indigo-500"
+                />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Chart Section */}
-                <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100/50 relative overflow-hidden">
+                {/* Sales Performance Area */}
+                <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100/50 relative overflow-hidden flex flex-col">
                     <div className="flex justify-between items-center mb-10">
                         <div>
-                            <h3 className="text-xl font-black text-gray-900">Actividad Semanal</h3>
-                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Evolución real de ventas</p>
+                            <h3 className="text-xl font-black text-gray-900">Rendimiento de Productos</h3>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Más vendidos vs Menos vendidos</p>
                         </div>
                     </div>
-                    <div className="h-80 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={chartData}>
-                                <defs>
-                                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                                    </linearGradient>
-                                </defs>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10, fontWeight: 700 }} dy={10} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9ca3af', fontSize: 10, fontWeight: 700 }} />
-                                <Tooltip cursor={{ stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 5' }} contentStyle={{ borderRadius: '20px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px 16px' }} />
-                                <Area type="monotone" dataKey="total" stroke="#8b5cf6" strokeWidth={4} fillOpacity={1} fill="url(#colorSales)" />
-                            </AreaChart>
-                        </ResponsiveContainer>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 flex-1">
+                        {/* More Sold */}
+                        <div className="space-y-4">
+                            <h4 className="text-[10px] font-black text-green-600 uppercase tracking-widest flex items-center gap-2 px-1">
+                                <ArrowUpRight size={14} /> Los 5 Más Vendidos
+                            </h4>
+                            <div className="space-y-2">
+                                {[...products]
+                                    .map(p => ({
+                                        ...p,
+                                        soldCount: sales.reduce((acc, s) => acc + s.items.filter(i => i.productId === p.id).reduce((sum, item) => sum + item.quantity, 0), 0)
+                                    }))
+                                    .sort((a, b) => b.soldCount - a.soldCount)
+                                    .slice(0, 5)
+                                    .map((p, idx) => (
+                                        <div key={p.id} className="flex items-center justify-between p-3 bg-green-50/20 rounded-2xl border border-green-50/50">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-sm font-black text-green-200 w-4">{idx + 1}</span>
+                                                <div className="w-10 h-10 rounded-xl overflow-hidden bg-white shrink-0 shadow-sm border border-green-50">
+                                                    {p.images?.[0] ? (
+                                                        <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={16} /></div>
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-bold text-gray-800 truncate">{p.name}</p>
+                                                    <p className="text-[10px] text-gray-400 uppercase font-black tracking-tighter">{p.soldCount} Vendidos</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        </div>
+
+                        {/* Less Sold */}
+                        <div className="space-y-4">
+                            <h4 className="text-[10px] font-black text-red-600 uppercase tracking-widest flex items-center gap-2 px-1">
+                                <ArrowDownRight size={14} /> Los 5 Menos Vendidos
+                            </h4>
+                            <div className="space-y-2">
+                                {[...products]
+                                    .map(p => ({
+                                        ...p,
+                                        soldCount: sales.reduce((acc, s) => acc + s.items.filter(i => i.productId === p.id).reduce((sum, item) => sum + item.quantity, 0), 0)
+                                    }))
+                                    .sort((a, b) => a.soldCount - b.soldCount)
+                                    .slice(0, 5)
+                                    .map((p, idx) => (
+                                        <div key={p.id} className="flex items-center justify-between p-3 bg-red-50/20 rounded-2xl border border-red-50/50">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-sm font-black text-red-200 w-4">{idx + 1}</span>
+                                                <div className="w-10 h-10 rounded-xl overflow-hidden bg-white shrink-0 shadow-sm border border-red-50">
+                                                    {p.images?.[0] ? (
+                                                        <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={16} /></div>
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-bold text-gray-800 truncate">{p.name}</p>
+                                                    <p className="text-[10px] text-gray-400 uppercase font-black tracking-tighter">{p.soldCount} Vendidos</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -250,6 +307,7 @@ export default function Dashboard() {
                                     <button
                                         onClick={(e) => handleDeleteSale(e, sale.id)}
                                         className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                        title="Eliminar Venta"
                                     >
                                         <Trash2 size={16} />
                                     </button>
@@ -281,6 +339,7 @@ export default function Dashboard() {
                                 <button
                                     onClick={() => setSelectedSale(null)}
                                     className="absolute top-6 right-6 p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-colors"
+                                    title="Cerrar"
                                 >
                                     <X size={20} />
                                 </button>

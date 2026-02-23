@@ -157,7 +157,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
                             <div className="flex gap-2">
                                 <input {...register('barcode')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all" placeholder="Escanear o generar" />
                                 <button type="button" className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 text-xs font-medium" onClick={() => setValue('barcode', Math.random().toString(36).substr(2, 9).toUpperCase())}>Generar</button>
-                                <label className="px-3 py-2 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 cursor-pointer flex items-center">
+                                <label className="px-3 py-2 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 cursor-pointer flex items-center" title="Escanear código de barras">
                                     <Camera size={18} />
                                     <input
                                         type="file"

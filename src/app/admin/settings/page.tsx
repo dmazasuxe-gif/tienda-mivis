@@ -217,6 +217,7 @@ export default function SettingsPage() {
                                                     setForm({ ...form, authorizedAdmins: newList });
                                                 }}
                                                 className="p-2 text-gray-300 hover:text-red-500 transition-colors disabled:opacity-30"
+                                                title="Eliminar Usuario"
                                             >
                                                 <Trash2 size={18} />
                                             </button>

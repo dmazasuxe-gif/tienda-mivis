@@ -293,6 +293,7 @@ export default function CustomersPage() {
                                 <button
                                     onClick={() => setIsPaymentModalOpen(false)}
                                     className="p-3 bg-white text-gray-400 hover:text-gray-900 rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-90"
+                                    title="Cerrar"
                                 >
                                     <X size={20} />
                                 </button>
@@ -449,6 +450,7 @@ export default function CustomersPage() {
                                 <button
                                     onClick={() => setSelectedCustomerForDetail(null)}
                                     className="p-2 hover:bg-gray-100 rounded-xl transition-all"
+                                    title="Cerrar"
                                 >
                                     <X size={20} className="text-gray-400" />
                                 </button>
@@ -522,9 +524,11 @@ export default function CustomersPage() {
                         >
                             <div className="flex justify-between items-center">
                                 <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Cambiar Fecha</h3>
-                                <button onClick={() => setEditingInstallment(null)}><X size={16} className="text-gray-400" /></button>
+                                <button onClick={() => setEditingInstallment(null)} title="Cerrar"><X size={16} className="text-gray-400" /></button>
                             </div>
+                            <label htmlFor="installmentDate" className="sr-only">Fecha de Cuota</label>
                             <input
+                                id="installmentDate"
                                 type="date"
                                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-gray-800"
                                 value={editingInstallment.currentDate.split('T')[0]}

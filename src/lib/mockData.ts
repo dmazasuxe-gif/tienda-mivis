@@ -2,7 +2,7 @@
 import { AppData, Product, Sale, Customer } from './types';
 
 // Helper to check environment
-const isClient = typeof window !== 'undefined';
+// isClient removed as it was unused
 
 // Empty lists for fresh start as requested
 export const mockProducts: Product[] = [];
