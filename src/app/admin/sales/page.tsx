@@ -23,6 +23,7 @@ export default function SalesPage() {
     const [installments, setInstallments] = useState(1);
     const [frequency, setFrequency] = useState<'Weekly' | 'Bi-weekly' | 'Monthly'>('Weekly');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+    const [discount, setDiscount] = useState(0);
 
     // Client name input state
     const [clientName, setClientName] = useState('');
@@ -73,7 +74,8 @@ export default function SalesPage() {
         }));
     };
 
-    const cartTotal = cart.reduce((acc, item) => acc + (item.salePrice * item.quantity), 0);
+    const cartSubtotal = cart.reduce((acc, item) => acc + (item.salePrice * item.quantity), 0);
+    const cartTotal = Math.max(0, cartSubtotal - discount);
 
     // Save new client and select them
     const handleSaveNewClient = async () => {
@@ -159,6 +161,7 @@ export default function SalesPage() {
 
             await processSale({
                 total: cartTotal,
+                discount: discount > 0 ? discount : undefined,
                 costTotal: calculatedCostTotal,
                 profit: calculatedProfit,
                 type: paymentType,
@@ -180,6 +183,7 @@ export default function SalesPage() {
 
             // Reset
             setCart([]);
+            setDiscount(0);
             setIsCheckoutOpen(false);
             setClientName('');
             setClientContact('');
@@ -411,7 +415,27 @@ export default function SalesPage() {
                 </div>
 
                 <div className="p-4 bg-gray-50 border-t border-gray-100 rounded-b-2xl space-y-3">
-                    <div className="flex justify-between items-center text-lg font-bold text-gray-800">
+                    {cart.length > 0 && (
+                        <>
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                                <span>Subtotal</span>
+                                <span>S/ {cartSubtotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between items-center gap-4">
+                                <span className="text-xs font-medium text-gray-500">Descuento (S/)</span>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    step="any"
+                                    value={discount || ''}
+                                    onChange={(e) => setDiscount(Math.max(0, parseFloat(e.target.value) || 0))}
+                                    className="w-24 p-1.5 text-right text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-1 focus:ring-purple-500 transition-all font-bold text-red-500"
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </>
+                    )}
+                    <div className="flex justify-between items-center text-lg font-bold text-gray-800 pt-1">
                         <span>Total</span>
                         <span>S/ {cartTotal.toFixed(2)}</span>
                     </div>

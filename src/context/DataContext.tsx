@@ -45,6 +45,7 @@ interface DataContextType extends AppData {
     resetCustomers: () => Promise<void>;
     resetSales: () => Promise<void>;
     updateSettings: (settings: AppData['settings']) => Promise<void>;
+    updateInstallmentDate: (saleId: string, installmentNumber: number, newDate: string) => Promise<void>;
     getFinancialSummary: () => {
         inventoryValue: number;
         totalSales: number;
@@ -486,6 +487,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [sales, customers]);
 
+    const updateInstallmentDate = useCallback(async (saleId: string, installmentNumber: number, newDate: string) => {
+        try {
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale || !sale.installmentPlan) return;
+
+            const updatedInstallments = sale.installmentPlan.installments.map(inst =>
+                inst.number === installmentNumber ? { ...inst, dueDate: newDate } : inst
+            );
+
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+            await updateDoc(saleRef, {
+                'installmentPlan.installments': updatedInstallments
+            });
+            console.log('Installment date updated');
+        } catch (error: any) {
+            console.error('Error updating installment date:', error);
+            setError(`Error al actualizar fecha: ${error.message}`);
+            throw error;
+        }
+    }, [sales]);
+
     // ────────────────────────────────────────────────
     // Financial Summary
     // ────────────────────────────────────────────────
@@ -596,6 +618,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             resetCustomers,
             resetSales,
             updateSettings,
+            updateInstallmentDate,
             getFinancialSummary,
             error,
             clearError,

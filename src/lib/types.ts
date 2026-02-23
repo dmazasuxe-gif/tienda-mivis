@@ -30,6 +30,7 @@ export interface Sale {
     id: string;
     date: string; // ISO String
     total: number;
+    discount?: number;
     costTotal: number;
     profit: number;
     type: 'Cash' | 'Credit';

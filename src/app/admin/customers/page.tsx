@@ -3,16 +3,16 @@
 
 import { useState, useMemo } from 'react';
 import { useData } from '@/context/DataContext';
-import { Customer, Sale } from '@/lib/types';
+import { Customer } from '@/lib/types';
 import {
-    User, DollarSign, Phone, Activity, Search, Edit2,
+    User, DollarSign, Phone, Search,
     AlertCircle, CheckCircle2, ChevronRight, X, Calendar,
-    CreditCard, Loader2, Trash2, RefreshCcw
+    CreditCard, Loader2, Trash2, RefreshCcw, Package
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function CustomersPage() {
-    const { customers, sales, recordInstallmentPayment, deleteCustomer, resetCustomers, resetAllData } = useData();
+    const { products, customers, sales, recordInstallmentPayment, deleteCustomer, resetCustomers, resetAllData, updateInstallmentDate } = useData();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -22,6 +22,8 @@ export default function CustomersPage() {
     // Record format: { [saleId: string]: number[] } // values are installment numbers
     const [selectedInstallments, setSelectedInstallments] = useState<Record<string, number[]>>({});
     const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Yape' | 'Transfer'>('Cash');
+    const [editingInstallment, setEditingInstallment] = useState<{ saleId: string, installmentNumber: number, currentDate: string } | null>(null);
+    const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<Customer | null>(null);
 
     // Filter customers
     const filteredCustomers = useMemo(() => {
@@ -75,6 +77,16 @@ export default function CustomersPage() {
                 [saleId]: next
             };
         });
+    };
+
+    const handleUpdateInstallmentDate = async (newDate: string) => {
+        if (!editingInstallment) return;
+        try {
+            await updateInstallmentDate(editingInstallment.saleId, editingInstallment.installmentNumber, newDate);
+            setEditingInstallment(null);
+        } catch (err) {
+            console.error(err);
+        }
     };
 
     const handlePayment = async () => {
@@ -196,11 +208,9 @@ export default function CustomersPage() {
                         layout
                         className={`bg-white rounded-2xl p-6 border ${customer.balance > 0 ? 'border-orange-100 shadow-orange-50' : 'border-gray-100'} shadow-sm relative overflow-hidden flex flex-col`}
                     >
-                        {customer.balance > 0 && (
-                            <div className="absolute top-0 right-0 bg-orange-100 text-orange-600 px-3 py-1 rounded-bl-xl text-[10px] font-bold flex items-center gap-1">
-                                <AlertCircle size={10} /> DEUDA ACTIVA
-                            </div>
-                        )}
+                        <div className="absolute top-0 right-0 bg-orange-100 text-orange-600 px-3 py-1 rounded-bl-xl text-[10px] font-bold flex items-center gap-1" title="El cliente tiene deudas pendientes">
+                            <AlertCircle size={10} /> DEUDA ACTIVA
+                        </div>
 
                         <div className="flex items-center gap-4 mb-5">
                             <div className="w-14 h-14 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl flex items-center justify-center text-xl font-bold text-purple-400 border border-purple-100">
@@ -214,7 +224,7 @@ export default function CustomersPage() {
                             </div>
                         </div>
 
-                        <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-xl mb-6 flex justify-between items-center border border-gray-100">
+                        <div className="bg-gray-50/80 backdrop-blur-sm p-4 rounded-xl mb-4 flex justify-between items-center border border-gray-100">
                             <div>
                                 <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-1">Saldo Pendiente</span>
                                 <span className={`text-2xl font-black ${customer.balance > 0 ? 'text-orange-600' : 'text-green-600'}`}>
@@ -225,6 +235,17 @@ export default function CustomersPage() {
                                 {customer.balance > 0 ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
                             </div>
                         </div>
+
+                        {/* Recent Credit Activity Detail - Task 3 */}
+                        {customer.history.length > 0 && sales.some(s => s.customerId === customer.id && s.type === 'Credit') && (
+                            <button
+                                onClick={() => setSelectedCustomerForDetail(customer)}
+                                className="w-full mb-6 p-3 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-between group"
+                            >
+                                🔍 Ver Detalle de Crédito
+                                <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                            </button>
+                        )}
 
                         <div className="flex gap-2.5 mt-auto">
                             <button
@@ -339,7 +360,25 @@ export default function CustomersPage() {
                                                             >
                                                                 <div className="flex justify-between items-start">
                                                                     <span className="text-[10px] font-black opacity-60">CUOTA #{inst.number}</span>
-                                                                    {inst.status === 'Paid' && <CheckCircle2 size={12} />}
+                                                                    <div className="flex gap-1 items-center">
+                                                                        {inst.status === 'Pending' && (
+                                                                            <div
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setEditingInstallment({
+                                                                                        saleId: sale.id,
+                                                                                        installmentNumber: inst.number,
+                                                                                        currentDate: inst.dueDate
+                                                                                    });
+                                                                                }}
+                                                                                className="p-1 hover:bg-black/10 rounded-md transition-colors text-inherit"
+                                                                                title="Cambiar fecha de pago"
+                                                                            >
+                                                                                <Calendar size={12} />
+                                                                            </div>
+                                                                        )}
+                                                                        {inst.status === 'Paid' && <CheckCircle2 size={12} />}
+                                                                    </div>
                                                                 </div>
                                                                 <span className="text-sm font-black">S/ {inst.amount.toFixed(2)}</span>
 
@@ -387,6 +426,116 @@ export default function CustomersPage() {
                                     )}
                                 </button>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* TASK 3: CREDIT DETAIL MODAL */}
+            <AnimatePresence>
+                {selectedCustomerForDetail && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-[2.5rem] w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+                        >
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                <div>
+                                    <h2 className="text-xl font-black text-gray-900 leading-tight">Detalle de Compras</h2>
+                                    <p className="text-xs text-gray-500 font-medium">{selectedCustomerForDetail.name}</p>
+                                </div>
+                                <button
+                                    onClick={() => setSelectedCustomerForDetail(null)}
+                                    className="p-2 hover:bg-gray-100 rounded-xl transition-all"
+                                >
+                                    <X size={20} className="text-gray-400" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                {sales
+                                    .filter(s => s.customerId === selectedCustomerForDetail.id && s.type === 'Credit')
+                                    .map(sale => (
+                                        <div key={sale.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-4">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">FECHA DE VENTA</p>
+                                                    <p className="text-xs font-bold text-gray-800">{new Date(sale.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                                                </div>
+                                                <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${sale.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                    {sale.status === 'Paid' ? 'PAGADO' : 'PENDIENTE'}
+                                                </span>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                {sale.items.map((item, idx) => {
+                                                    const product = products.find(p => p.id === item.productId);
+                                                    return (
+                                                        <div key={idx} className="flex gap-4 items-center bg-white p-3 rounded-xl border border-gray-100">
+                                                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex-shrink-0">
+                                                                {product?.images?.[0] ? (
+                                                                    <img src={product.images[0]} alt={item.productName} className="w-full h-full object-cover" />
+                                                                ) : (
+                                                                    <div className="w-full h-full flex items-center justify-center text-gray-200">
+                                                                        <Package size={20} />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-black text-gray-900 leading-tight mb-1">{item.productName}</p>
+                                                                <p className="text-[10px] font-bold text-purple-600">S/ {item.salePrice.toFixed(2)} x {item.quantity}</p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div className="pt-3 border-t border-dashed border-gray-200 flex justify-between items-end">
+                                                <div>
+                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">PLAN DE PAGOS</p>
+                                                    <p className="text-xs font-bold text-gray-700">{sale.installmentPlan?.numberOfInstallments} cuotas</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">TOTAL VENTA</p>
+                                                    <p className="text-lg font-black text-gray-900">S/ {sale.total.toFixed(2)}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* TASK 1: DATE EDIT OVERLAY */}
+            <AnimatePresence>
+                {editingInstallment && (
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150] flex items-center justify-center">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white p-6 rounded-3xl shadow-2xl space-y-4 max-w-xs w-full"
+                        >
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Cambiar Fecha</h3>
+                                <button onClick={() => setEditingInstallment(null)}><X size={16} className="text-gray-400" /></button>
+                            </div>
+                            <input
+                                type="date"
+                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-gray-800"
+                                value={editingInstallment.currentDate.split('T')[0]}
+                                onChange={(e) => setEditingInstallment({ ...editingInstallment, currentDate: e.target.value })}
+                            />
+                            <button
+                                onClick={() => handleUpdateInstallmentDate(editingInstallment.currentDate)}
+                                className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all"
+                            >
+                                Cambiar Fecha
+                            </button>
                         </motion.div>
                     </div>
                 )}
