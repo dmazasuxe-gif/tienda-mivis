@@ -73,6 +73,36 @@ export default function Dashboard() {
 
     const recentSales = sales.slice(0, 6);
 
+    const getPaymentBreakdown = () => {
+        const methods = ['Cash', 'Yape', 'Plin', 'Card', 'Transfer', 'Other'];
+        const breakdown: Record<string, { total: number; count: number }> = {};
+
+        methods.forEach(m => breakdown[m] = { total: 0, count: 0 });
+
+        sales.forEach(sale => {
+            if (sale.payments && sale.payments.length > 0) {
+                sale.payments.forEach(p => {
+                    const m = p.method as string;
+                    if (breakdown[m]) {
+                        breakdown[m].total += p.amount;
+                        breakdown[m].count += 1;
+                    } else {
+                        breakdown['Other'].total += p.amount;
+                        breakdown['Other'].count += 1;
+                    }
+                });
+            } else if (sale.type === 'Cash' && sale.status === 'Paid') {
+                // Fallback for old sales without payment detail
+                breakdown['Cash'].total += sale.total;
+                breakdown['Cash'].count += 1;
+            }
+        });
+
+        return breakdown;
+    };
+
+    const paymentBreakdown = getPaymentBreakdown();
+
     const handleDeleteSale = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (window.confirm('¿Estás seguro de eliminar esta venta? El stock y balances serán revertidos.')) {
@@ -96,13 +126,31 @@ export default function Dashboard() {
 
             // Summary boxes
             doc.setFillColor(243, 244, 246);
-            doc.roundedRect(15, 45, 180, 25, 3, 3, 'F');
+            doc.roundedRect(15, 45, 180, 35, 3, 3, 'F');
             doc.setTextColor(50, 50, 50);
             doc.setFontSize(10);
             doc.text(`Valor Stock: S/ ${summary.inventoryValue.toFixed(2)}`, 25, 55);
             doc.text(`Total Ventas: S/ ${summary.totalSales.toFixed(2)}`, 25, 62);
             doc.text(`Ganancia Neta: S/ ${summary.totalProfit.toFixed(2)}`, 120, 55);
             doc.text(`Por Cobrar: S/ ${summary.pendingReceivables.toFixed(2)}`, 120, 62);
+            doc.text(`Cobrado Total (Efectivo/Yape/etc): S/ ${Object.values(paymentBreakdown).reduce((a, b) => a + b.total, 0).toFixed(2)}`, 25, 69);
+
+            // Payment Breakdown Table in PDF
+            const breakdownRows = Object.entries(paymentBreakdown)
+                .filter(([_, data]) => data.total > 0)
+                .map(([method, data]) => [
+                    method === 'Cash' ? 'Efectivo' : method,
+                    data.count.toString(),
+                    `S/ ${data.total.toFixed(2)}`
+                ]);
+
+            autoTable(doc, {
+                startY: 85,
+                head: [['Método de Pago', 'N° Operaciones', 'Monto Total']],
+                body: breakdownRows,
+                headStyles: { fillColor: [139, 92, 246] },
+                margin: { left: 15, right: 15 },
+            });
 
             // Table Data
             const tableRows = sales.flatMap(sale =>
@@ -118,7 +166,7 @@ export default function Dashboard() {
             );
 
             autoTable(doc, {
-                startY: 80,
+                startY: (doc as any).lastAutoTable.finalY + 15,
                 head: [['Fecha', 'Producto', 'Cant.', 'Precio Unit.', 'Subtotal', 'Tipo', 'Estado']],
                 body: tableRows,
                 headStyles: { fillColor: [139, 92, 246] },
@@ -272,48 +320,97 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* Recent Activity Section */}
-                <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100/50 flex flex-col">
-                    <div className="flex justify-between items-center mb-8">
-                        <h3 className="text-xl font-black text-gray-900">Últimas Ventas</h3>
-                        <Link href="/admin/sales" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-colors">
-                            <ArrowUpRight size={20} />
-                        </Link>
+                <div className="flex flex-col gap-8">
+                    {/* Payment Breakdown Sidebar */}
+                    <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100/50 flex flex-col">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-black text-gray-900">Cobros por Método</h3>
+                            <div className="p-2 bg-green-50 text-green-600 rounded-xl">
+                                <DollarSign size={20} />
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 flex-1">
+                            <div className="overflow-hidden rounded-2xl border border-gray-100">
+                                <table className="w-full text-left border-collapse">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest">Método</th>
+                                            <th className="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Cant.</th>
+                                            <th className="px-4 py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-50">
+                                        {Object.entries(paymentBreakdown)
+                                            .filter(([_, data]) => data.total > 0)
+                                            .map(([method, data]) => (
+                                                <tr key={method} className="hover:bg-gray-50/50 transition-colors">
+                                                    <td className="px-4 py-3 text-sm font-bold text-gray-700">{method === 'Cash' ? 'Efectivo' : method}</td>
+                                                    <td className="px-4 py-3 text-sm font-medium text-gray-400 text-center">{data.count}</td>
+                                                    <td className="px-4 py-3 text-sm font-black text-gray-900 text-right">S/ {data.total.toFixed(2)}</td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                    <tfoot className="bg-purple-50">
+                                        <tr>
+                                            <td className="px-4 py-3 text-xs font-black text-purple-700">TOTAL COBRADO</td>
+                                            <td className="px-4 py-3 text-xs font-black text-purple-400 text-center">
+                                                {Object.values(paymentBreakdown).reduce((a, b) => a + b.count, 0)}
+                                            </td>
+                                            <td className="px-4 py-3 text-sm font-black text-purple-700 text-right">
+                                                S/ {Object.values(paymentBreakdown).reduce((a, b) => a + b.total, 0).toFixed(2)}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                            <p className="text-[10px] text-gray-400 italic">Dinero real ingresado (Ventas al contado y abonos).</p>
+                        </div>
                     </div>
 
-                    <div className="space-y-4 flex-1">
-                        {recentSales.map((sale) => (
-                            <div
-                                key={sale.id}
-                                onClick={() => setSelectedSale(sale)}
-                                className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl hover:bg-gray-50 transition-all cursor-pointer border border-transparent hover:border-gray-100 group relative"
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${sale.type === 'Credit' ? 'bg-orange-100 text-orange-600' : 'bg-purple-100 text-purple-600'}`}>
-                                        {sale.type === 'Credit' ? <CreditCard size={20} /> : <ShoppingCart size={20} />}
+                    {/* Recent Activity Section */}
+                    <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100/50 flex flex-col">
+                        <div className="flex justify-between items-center mb-8">
+                            <h3 className="text-xl font-black text-gray-900">Últimas Ventas</h3>
+                            <Link href="/admin/sales" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-colors">
+                                <ArrowUpRight size={20} />
+                            </Link>
+                        </div>
+
+                        <div className="space-y-4 flex-1">
+                            {recentSales.map((sale) => (
+                                <div
+                                    key={sale.id}
+                                    onClick={() => setSelectedSale(sale)}
+                                    className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl hover:bg-gray-50 transition-all cursor-pointer border border-transparent hover:border-gray-100 group relative"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${sale.type === 'Credit' ? 'bg-orange-100 text-orange-600' : 'bg-purple-100 text-purple-600'}`}>
+                                            {sale.type === 'Credit' ? <CreditCard size={20} /> : <ShoppingCart size={20} />}
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-gray-900 text-sm truncate max-w-[100px]">{sale.items[0]?.productName || 'Varios'}</p>
+                                            <p className="text-[10px] font-black text-gray-400">{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="font-bold text-gray-900 text-sm truncate max-w-[100px]">{sale.items[0]?.productName || 'Varios'}</p>
-                                        <p className="text-[10px] font-black text-gray-400">{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                    <div className="flex items-center gap-3">
+                                        <div className="text-right">
+                                            <p className="font-black text-gray-900 text-sm">S/ {sale.total.toFixed(2)}</p>
+                                            <span className={`text-[8px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-lg ${sale.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                {sale.status === 'Paid' ? 'Pagado' : 'Crédito'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={(e) => handleDeleteSale(e, sale.id)}
+                                            className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                            title="Eliminar Venta"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="text-right">
-                                        <p className="font-black text-gray-900 text-sm">S/ {sale.total.toFixed(2)}</p>
-                                        <span className={`text-[8px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-lg ${sale.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                            {sale.status === 'Paid' ? 'Pagado' : 'Crédito'}
-                                        </span>
-                                    </div>
-                                    <button
-                                        onClick={(e) => handleDeleteSale(e, sale.id)}
-                                        className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                        title="Eliminar Venta"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -400,8 +497,8 @@ export default function Dashboard() {
                                             <p className="text-3xl font-black text-gray-900 mt-1">S/ {selectedSale.total.toFixed(2)}</p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Método</p>
-                                            <p className="text-lg font-bold text-purple-600 mt-1">{selectedSale.type === 'Cash' ? 'Efectivo' : 'Crédito'}</p>
+                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Tipo</p>
+                                            <p className="text-lg font-bold text-purple-600 mt-1">{selectedSale.type === 'Cash' ? 'Contado' : 'Crédito'}</p>
                                         </div>
                                     </div>
 

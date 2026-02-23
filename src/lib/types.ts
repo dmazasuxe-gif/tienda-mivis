@@ -21,7 +21,7 @@ export interface SaleItem {
 }
 
 export interface PaymentDetails {
-    method: 'Cash' | 'Card' | 'Transfer' | 'Yape' | 'Other';
+    method: 'Cash' | 'Card' | 'Transfer' | 'Yape' | 'Plin' | 'Other';
     amount: number;
     date: string; // ISO String
 }

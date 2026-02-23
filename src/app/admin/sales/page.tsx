@@ -44,6 +44,7 @@ export default function SalesPage() {
 
     // Checkout State
     const [paymentType, setPaymentType] = useState<'Cash' | 'Credit'>('Cash');
+    const [cashMethod, setCashMethod] = useState<'Cash' | 'Yape' | 'Plin'>('Cash');
     const [selectedCustomerId, setSelectedCustomerId] = useState('');
     const [installments, setInstallments] = useState(1);
     const [frequency, setFrequency] = useState<'Weekly' | 'Bi-weekly' | 'Monthly'>('Weekly');
@@ -219,6 +220,11 @@ export default function SalesPage() {
                 customerId,
                 status: paymentType === 'Cash' ? 'Paid' : 'Pending',
                 remainingBalance: paymentType === 'Credit' ? cartTotal : 0,
+                payments: paymentType === 'Cash' ? [{
+                    method: cashMethod as any,
+                    amount: cartTotal,
+                    date: new Date().toISOString()
+                }] : [],
                 installmentPlan: paymentType === 'Credit' ? {
                     numberOfInstallments: installments || 1,
                     paymentFrequency: frequency,
@@ -643,8 +649,8 @@ export default function SalesPage() {
 
                                 {/* Payment type */}
                                 <div>
-                                    <label className="text-sm font-medium text-gray-600 mb-2 block">Método de Pago</label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <label className="text-sm font-medium text-gray-600 mb-2 block">Tipo de Venta</label>
+                                    <div className="grid grid-cols-2 gap-3 mb-4">
                                         <button
                                             onClick={() => setPaymentType('Cash')}
                                             className={`flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${paymentType === 'Cash' ? 'border-purple-500 bg-purple-50 text-purple-700 font-bold' : 'border-gray-100 text-gray-500 hover:border-gray-200'}`}
@@ -660,6 +666,23 @@ export default function SalesPage() {
                                             Crédito
                                         </button>
                                     </div>
+
+                                    {paymentType === 'Cash' && (
+                                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">Método de Cobro</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {['Cash', 'Yape', 'Plin'].map((m) => (
+                                                    <button
+                                                        key={m}
+                                                        onClick={() => setCashMethod(m as any)}
+                                                        className={`py-2 px-1 rounded-lg border text-[10px] font-black uppercase transition-all ${cashMethod === m ? 'bg-purple-600 border-purple-600 text-white shadow-md' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-white'}`}
+                                                    >
+                                                        {m === 'Cash' ? 'Efectivo' : m}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Client selection in modal */}

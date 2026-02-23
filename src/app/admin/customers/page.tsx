@@ -21,7 +21,7 @@ export default function CustomersPage() {
     // Track selected installments by saleId
     // Record format: { [saleId: string]: number[] } // values are installment numbers
     const [selectedInstallments, setSelectedInstallments] = useState<Record<string, number[]>>({});
-    const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Yape' | 'Transfer'>('Cash');
+    const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Yape' | 'Plin' | 'Transfer'>('Cash');
     const [editingInstallment, setEditingInstallment] = useState<{ saleId: string, installmentNumber: number, currentDate: string } | null>(null);
     const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<Customer | null>(null);
 
@@ -305,7 +305,7 @@ export default function CustomersPage() {
                                 <div>
                                     <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 block">MÉTODO DE PAGO</label>
                                     <div className="grid grid-cols-3 gap-3">
-                                        {(['Cash', 'Yape', 'Transfer'] as const).map(method => (
+                                        {(['Cash', 'Yape', 'Plin', 'Transfer'] as const).map(method => (
                                             <button
                                                 key={method}
                                                 onClick={() => setPaymentMethod(method)}
@@ -316,6 +316,7 @@ export default function CustomersPage() {
                                             >
                                                 {method === 'Cash' && <DollarSign size={20} />}
                                                 {method === 'Yape' && <Phone size={20} />}
+                                                {method === 'Plin' && <Activity size={20} />}
                                                 {method === 'Transfer' && <CreditCard size={20} />}
                                                 <span className="text-xs">{method === 'Cash' ? 'Efectivo' : method}</span>
                                             </button>
