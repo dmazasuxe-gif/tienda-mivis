@@ -33,7 +33,7 @@ interface DataContextType extends AppData {
     addProduct: (product: Product) => Promise<string>;
     updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
     deleteProduct: (id: string) => Promise<void>;
-    processSale: (sale: Omit<Sale, 'id' | 'date'>) => Promise<void>;
+    processSale: (sale: Omit<Sale, 'id'> & { date?: string }) => Promise<void>;
     addCustomer: (customer: Customer) => Promise<string>;
     updateCustomer: (id: string, updates: Partial<Customer>) => Promise<void>;
     deleteCustomer: (id: string) => Promise<void>;
@@ -298,12 +298,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('Processing sale in Firestore...', saleData);
             const batch = writeBatch(db);
 
-            // 1. Create the sale document — strip undefined values (Firestore rejects them)
             const saleRef = doc(collection(db, COLLECTIONS.sales));
-            const cleanSaleData = JSON.parse(JSON.stringify(saleData)); // removes undefined fields
+            const { date, ...cleanSaleData } = JSON.parse(JSON.stringify(saleData));
             const newSale = {
                 ...cleanSaleData,
-                date: new Date().toISOString(),
+                date: date || new Date().toISOString(),
                 createdAt: Timestamp.now(),
             };
             batch.set(saleRef, newSale);

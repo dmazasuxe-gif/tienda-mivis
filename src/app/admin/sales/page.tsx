@@ -6,7 +6,7 @@ import { useData } from '@/context/DataContext';
 import { Product, SaleItem } from '@/lib/types';
 import {
     ShoppingCart, Plus, Minus, X, Search, User, CreditCard,
-    DollarSign, Package, UserPlus, Check, Loader2
+    DollarSign, Package, UserPlus, Check, Loader2, Edit3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -24,6 +24,7 @@ export default function SalesPage() {
     const [frequency, setFrequency] = useState<'Weekly' | 'Bi-weekly' | 'Monthly'>('Weekly');
     const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
     const [discount, setDiscount] = useState(0);
+    const [saleDate, setSaleDate] = useState(new Date().toISOString().split('T')[0]);
 
     // Client name input state
     const [clientName, setClientName] = useState('');
@@ -31,6 +32,11 @@ export default function SalesPage() {
     const [clientInputMode, setClientInputMode] = useState<'select' | 'new'>('select');
     const [savingClient, setSavingClient] = useState(false);
     const [savedClientMsg, setSavedClientMsg] = useState('');
+
+    // Manual item state
+    const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+    const [manualItemName, setManualItemName] = useState('');
+    const [manualItemPrice, setManualItemPrice] = useState('');
 
     const filteredProducts = products.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -66,12 +72,30 @@ export default function SalesPage() {
     const updateQuantity = (productId: string, delta: number) => {
         setCart(prev => prev.map(item => {
             if (item.productId === productId) {
+                // If manual item, no stock limit
+                if (productId.startsWith('manual-')) {
+                    return { ...item, quantity: Math.max(1, item.quantity + delta) };
+                }
                 const maxStock = products.find(p => p.id === productId)?.stock ?? 99;
                 const newQty = Math.max(1, Math.min(maxStock, item.quantity + delta));
                 return { ...item, quantity: newQty };
             }
             return item;
         }));
+    };
+
+    const addManualItem = () => {
+        if (!manualItemName.trim() || !manualItemPrice) return;
+        const newItem: SaleItem = {
+            productId: `manual-${Date.now()}`,
+            productName: manualItemName.trim(),
+            quantity: 1,
+            salePrice: parseFloat(manualItemPrice)
+        };
+        setCart(prev => [...prev, newItem]);
+        setManualItemName('');
+        setManualItemPrice('');
+        setIsManualModalOpen(false);
     };
 
     const cartSubtotal = cart.reduce((acc, item) => acc + (item.salePrice * item.quantity), 0);
@@ -161,6 +185,7 @@ export default function SalesPage() {
 
             await processSale({
                 total: cartTotal,
+                date: new Date(saleDate + 'T12:00:00').toISOString(),
                 discount: discount > 0 ? discount : undefined,
                 costTotal: calculatedCostTotal,
                 profit: calculatedProfit,
@@ -203,7 +228,15 @@ export default function SalesPage() {
             {/* Product Catalog */}
             <div className="flex-1 flex flex-col gap-4 min-h-0">
                 <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-gray-800">Punto de Venta</h1>
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-2xl font-bold text-gray-800">Punto de Venta</h1>
+                        <button
+                            onClick={() => setIsManualModalOpen(true)}
+                            className="bg-orange-50 text-orange-600 px-3 py-1.5 rounded-xl text-xs font-bold border border-orange-100 flex items-center gap-2 hover:bg-orange-100 transition-colors"
+                        >
+                            <Edit3 size={14} /> Venta Manual (Legacy)
+                        </button>
+                    </div>
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                         <input
@@ -466,6 +499,17 @@ export default function SalesPage() {
                             </div>
 
                             <div className="p-6 space-y-5">
+                                {/* Sale Date */}
+                                <div>
+                                    <label className="text-sm font-medium text-gray-600 mb-2 block">Fecha de la Venta</label>
+                                    <input
+                                        type="date"
+                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 font-bold"
+                                        value={saleDate}
+                                        onChange={(e) => setSaleDate(e.target.value)}
+                                    />
+                                </div>
+
                                 {/* Payment type */}
                                 <div>
                                     <label className="text-sm font-medium text-gray-600 mb-2 block">Método de Pago</label>
@@ -581,6 +625,62 @@ export default function SalesPage() {
                                     ) : (
                                         'Confirmar Venta'
                                     )}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+            {/* Manual Item Modal */}
+            <AnimatePresence>
+                {isManualModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+                            className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+                        >
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-orange-50">
+                                <h2 className="text-xl font-bold text-orange-800 flex items-center gap-2">
+                                    <Edit3 size={20} /> Registro Manual
+                                </h2>
+                                <button onClick={() => setIsManualModalOpen(false)} aria-label="Cerrar"><X className="text-orange-400 hover:text-orange-600" /></button>
+                            </div>
+
+                            <div className="p-6 space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">NOMBRE DEL PRODUCTO/SERVICIO</label>
+                                    <input
+                                        type="text"
+                                        placeholder="Ej: Saldo antiguo o Producto agotado"
+                                        value={manualItemName}
+                                        onChange={(e) => setManualItemName(e.target.value)}
+                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 font-medium"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-widest block mb-2">PRECIO TOTAL (S/)</label>
+                                    <input
+                                        type="number"
+                                        placeholder="0.00"
+                                        value={manualItemPrice}
+                                        onChange={(e) => setManualItemPrice(e.target.value)}
+                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 font-bold"
+                                    />
+                                </div>
+
+                                <p className="text-[10px] text-gray-400 bg-gray-50 p-3 rounded-lg border border-dashed border-gray-200 leading-relaxed">
+                                    💡 Usa esta opción para registrar ventas de productos que ya no tienes en stock o deudas antiguas del cliente.
+                                </p>
+
+                                <button
+                                    onClick={addManualItem}
+                                    disabled={!manualItemName.trim() || !manualItemPrice}
+                                    className="w-full py-4 bg-orange-600 text-white rounded-xl font-bold shadow-lg shadow-orange-100 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
+                                >
+                                    Agregar al Carrito
                                 </button>
                             </div>
                         </motion.div>
