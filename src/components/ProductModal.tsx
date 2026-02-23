@@ -29,7 +29,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
         } else {
             reset({
                 name: '',
-                category: 'Fashion',
+                category: 'ROPA PARA DAMAS',
                 costPrice: 0,
                 salePrice: 0,
                 stock: 0,
@@ -183,9 +183,12 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Categoría</label>
                             <select {...register('category')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all bg-white">
-                                <option value="Fashion">Moda (Ropa, Accesorios)</option>
-                                <option value="Personal Care">Cuidado Personal</option>
-                                <option value="Other">Otro</option>
+                                <option value="ROPA PARA DAMAS">ROPA PARA DAMAS</option>
+                                <option value="CARTERAS/BILLETERAS">CARTERAS/BILLETERAS</option>
+                                <option value="ACCESORIOS">ACCESORIOS</option>
+                                <option value="CUIDADO PERSONAL">CUIDADO PERSONAL</option>
+                                <option value="SALUD">SALUD</option>
+                                <option value="OTROS">OTROS</option>
                             </select>
                         </div>
 

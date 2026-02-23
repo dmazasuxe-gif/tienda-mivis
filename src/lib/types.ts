@@ -3,7 +3,7 @@ export interface Product {
     id: string;
     name: string;
     description: string;
-    category: 'Fashion' | 'Personal Care' | 'Other';
+    category: 'ROPA PARA DAMAS' | 'CARTERAS/BILLETERAS' | 'ACCESORIOS' | 'CUIDADO PERSONAL' | 'SALUD' | 'OTROS';
     costPrice: number;
     salePrice: number;
     stock: number;

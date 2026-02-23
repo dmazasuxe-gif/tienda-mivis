@@ -14,6 +14,15 @@ import {
 
 export default function Home() {
   const { products, settings } = useData();
+
+  const CATEGORY_ORDER = [
+    'ROPA PARA DAMAS',
+    'CARTERAS/BILLETERAS',
+    'ACCESORIOS',
+    'CUIDADO PERSONAL',
+    'SALUD',
+    'OTROS'
+  ];
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -25,12 +34,25 @@ export default function Home() {
     setIsMounted(true);
   }, []);
 
-  const activeProducts = products.filter(p => p.active && p.stock > 0);
+  const activeProducts = [...products]
+    .filter(p => p.active && p.stock > 0)
+    .sort((a, b) => {
+      const orderA = CATEGORY_ORDER.indexOf(a.category);
+      const orderB = CATEGORY_ORDER.indexOf(b.category);
+      // If category not in list (shouldn't happen), put it at the end
+      const finalA = orderA === -1 ? 999 : orderA;
+      const finalB = orderB === -1 ? 999 : orderB;
+      return finalA - finalB;
+    });
+
   const filteredProducts = filterCategory === 'all'
     ? activeProducts
     : activeProducts.filter(p => p.category === filterCategory);
 
-  const categories = [...new Set(products.map(p => p.category))];
+  const categories = CATEGORY_ORDER.filter(cat => products.some(p => p.category === cat));
+  // Add any other categories that might exist but aren't in the ORDER (precaution)
+  const otherCats = [...new Set(products.map(p => p.category))].filter(cat => !CATEGORY_ORDER.includes(cat));
+  const finalCategories = [...categories, ...otherCats];
 
   const toggleFavorite = (id: string) => {
     setFavorites(prev => {
@@ -59,7 +81,7 @@ export default function Home() {
   };
 
   const handleWhatsAppBuy = (product: Product) => {
-    const categoryLabel = product.category === 'Fashion' ? 'Moda' : product.category === 'Personal Care' ? 'Cuidado Personal' : product.category;
+    const categoryLabel = product.category;
     const lines = [
       `¡Hola! 👋 Estoy interesado/a en el siguiente producto de *MivisShoping*:`,
       ``,
@@ -190,7 +212,7 @@ export default function Home() {
           </div>
 
           {/* Category Filter */}
-          {categories.length > 1 && (
+          {finalCategories.length > 1 && (
             <div className="flex justify-center gap-2 mb-10 flex-wrap">
               <button
                 onClick={() => setFilterCategory('all')}
@@ -201,7 +223,7 @@ export default function Home() {
               >
                 Todos
               </button>
-              {categories.map(cat => (
+              {finalCategories.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setFilterCategory(cat)}
@@ -210,7 +232,7 @@ export default function Home() {
                     : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                     }`}
                 >
-                  {cat === 'Fashion' ? 'Moda' : cat === 'Personal Care' ? 'Cuidado Personal' : cat}
+                  {cat}
                 </button>
               ))}
             </div>
@@ -425,7 +447,7 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <span className="px-3 py-1 bg-purple-50 text-purple-600 text-xs font-semibold rounded-full flex items-center gap-1">
                     <Tag size={12} />
-                    {selectedProduct.category === 'Fashion' ? 'Moda' : selectedProduct.category === 'Personal Care' ? 'Cuidado Personal' : selectedProduct.category}
+                    {selectedProduct.category}
                   </span>
                   {selectedProduct.stock > 0 && (
                     <span className="px-3 py-1 bg-green-50 text-green-600 text-xs font-semibold rounded-full">
