@@ -491,22 +491,23 @@ export default function SalesPage() {
                     >
                         <motion.div
                             initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-                            className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
+                            className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
                         >
-                            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center shrink-0">
                                 <h2 className="text-xl font-bold text-gray-800">Finalizar Venta</h2>
-                                <button onClick={() => setIsCheckoutOpen(false)} aria-label="Cerrar"><X className="text-gray-400 hover:text-gray-600" /></button>
+                                <button onClick={() => setIsCheckoutOpen(false)} aria-label="Cerrar" title="Cerrar"><X className="text-gray-400 hover:text-gray-600" /></button>
                             </div>
 
-                            <div className="p-6 space-y-5">
-                                {/* Sale Date */}
+                            <div className="p-6 space-y-5 overflow-y-auto flex-1">
                                 <div>
-                                    <label className="text-sm font-medium text-gray-600 mb-2 block">Fecha de la Venta</label>
+                                    <label className="text-sm font-medium text-gray-600 mb-2 block" htmlFor="saleDateInput">Fecha de la Venta</label>
                                     <input
+                                        id="saleDateInput"
                                         type="date"
                                         className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 font-bold"
                                         value={saleDate}
                                         onChange={(e) => setSaleDate(e.target.value)}
+                                        title="Seleccionar fecha"
                                     />
                                 </div>
 
@@ -611,11 +612,12 @@ export default function SalesPage() {
                                 </div>
                             </div>
 
-                            <div className="p-6 border-t border-gray-100 bg-gray-50">
+                            <div className="p-6 border-t border-gray-100 bg-gray-50 shrink-0">
                                 <button
                                     onClick={handleCheckout}
                                     disabled={isProcessingSale}
-                                    className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-bold shadow-lg hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
+                                    className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-bold shadow-lg hover:scale-[1.02] transition-transform flex items-center justify-center gap-2"
+                                    title="Confirmar Venta"
                                 >
                                     {isProcessingSale ? (
                                         <>

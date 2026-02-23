@@ -456,7 +456,7 @@ export default function CustomersPage() {
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-6">
                                 {sales
-                                    .filter(s => s.customerId === selectedCustomerForDetail.id && s.type === 'Credit')
+                                    .filter(s => s.customerId === selectedCustomerForDetail.id)
                                     .map(sale => (
                                         <div key={sale.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-4">
                                             <div className="flex justify-between items-start">

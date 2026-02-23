@@ -316,13 +316,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
 
-            // 3. Update customer debt if credit sale
-            if (saleData.type === 'Credit' && saleData.customerId) {
+            // 3. Update customer info if customerId provided
+            if (saleData.customerId) {
                 const customerRef = doc(db, COLLECTIONS.customers, saleData.customerId);
-                batch.update(customerRef, {
-                    balance: increment(saleData.remainingBalance || 0),
+                const updates: any = {
                     history: arrayUnion(saleRef.id),
-                });
+                };
+
+                if (saleData.type === 'Credit') {
+                    updates.balance = increment(saleData.remainingBalance || 0);
+                }
+
+                batch.update(customerRef, updates);
             }
 
             // Execute all operations atomically
