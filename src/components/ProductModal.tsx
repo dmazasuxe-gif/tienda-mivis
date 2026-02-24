@@ -18,8 +18,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
     const { register, handleSubmit, reset, setValue } = useForm();
 
     const [images, setImages] = useState<string[]>([]);
-    const [isScanning, setIsScanning] = useState(false);
-    const [scanError, setScanError] = useState('');
+
 
 
     useEffect(() => {
@@ -42,67 +41,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
         }
     }, [initialData, reset]);
 
-    const handleBarcodeScan = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
 
-        setIsScanning(true);
-        setScanError('');
-
-        try {
-            // Process image: resize and normalize
-            const processedImg = await new Promise<HTMLImageElement>((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX = 1280;
-                    let w = img.width, h = img.height;
-                    if (w > MAX || h > MAX) {
-                        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-                        else { w = Math.round(w * MAX / h); h = MAX; }
-                    }
-                    canvas.width = w; canvas.height = h;
-                    const ctx = canvas.getContext('2d');
-                    if (!ctx) { reject(new Error('No ctx')); return; }
-                    ctx.drawImage(img, 0, 0, w, h);
-                    const result = new Image();
-                    result.onload = () => resolve(result);
-                    result.onerror = reject;
-                    result.src = canvas.toDataURL('image/png');
-                };
-                img.onerror = reject;
-                img.src = URL.createObjectURL(file);
-            });
-
-            // Method 1: BarcodeDetector API (native)
-            if ('BarcodeDetector' in window) {
-                try {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const BDClass = (window as any).BarcodeDetector;
-                    const detector = new BDClass({
-                        formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code', 'itf', 'codabar']
-                    });
-                    const barcodes = await detector.detect(processedImg);
-                    if (barcodes?.length > 0) {
-                        setValue('barcode', barcodes[0].rawValue);
-                        setIsScanning(false);
-                        return;
-                    }
-                } catch { /* fallback */ }
-            }
-
-            // Method 2: html5-qrcode scanFile
-            const { Html5Qrcode } = await import('html5-qrcode');
-            const scanner = new Html5Qrcode('modal-barcode-decoder');
-            const result = await scanner.scanFile(file, false);
-            scanner.clear();
-            setValue('barcode', result);
-            setIsScanning(false);
-        } catch {
-            setScanError('No se detectó código. Acerca más la cámara.');
-            setIsScanning(false);
-        }
-    }, [setValue]);
 
     const [isUploading, setIsUploading] = useState(false);
 
@@ -154,30 +93,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
 
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Código de Barras</label>
-                            <div className="flex gap-2">
-                                <input {...register('barcode')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all" placeholder="Escanear o generar" />
-                                <button type="button" className="px-3 py-2 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 text-xs font-medium" onClick={() => setValue('barcode', Math.random().toString(36).substr(2, 9).toUpperCase())}>Generar</button>
-                                <label className="px-3 py-2 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 cursor-pointer flex items-center" title="Escanear código de barras">
-                                    <Camera size={18} />
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        capture="environment"
-                                        onChange={handleBarcodeScan}
-                                        className="hidden"
-                                        aria-label="Escanear código de barras"
-                                    />
-                                </label>
-                            </div>
-                            {/* Decoder container */}
-                            <div id="modal-barcode-decoder" className="hidden" aria-hidden="true" />
-                            {isScanning && (
-                                <div className="flex items-center gap-2 text-sm text-purple-600 mt-1">
-                                    <RefreshCw size={14} className="animate-spin" />
-                                    Procesando imagen...
-                                </div>
-                            )}
-                            {scanError && <p className="text-xs text-red-500 mt-1">{scanError}</p>}
+                            <input {...register('barcode')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all" placeholder="Referencia o código" />
                         </div>
 
                         <div className="space-y-2">

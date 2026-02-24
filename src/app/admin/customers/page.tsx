@@ -12,7 +12,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function CustomersPage() {
-    const { products, customers, sales, recordInstallmentPayment, deleteCustomer, resetCustomers, resetAllData, updateInstallmentDate } = useData();
+    const { products, customers, sales, recordInstallmentPayment, reverseInstallmentPayment, deleteCustomer, resetCustomers, resetAllData, updateInstallmentDate } = useData();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -62,9 +62,16 @@ export default function CustomersPage() {
         setIsPaymentModalOpen(true);
     };
 
-    const toggleInstallment = (sale: any, installment: any) => {
+    const toggleInstallment = async (sale: any, installment: any) => {
         const saleId = sale.id;
         const installmentNumber = installment.number;
+
+        if (installment.status === 'Paid') {
+            if (window.confirm('¿Deseas anular el pago de esta cuota y marcarla como pendiente? El saldo del cliente será ajustado.')) {
+                await reverseInstallmentPayment(saleId, installmentNumber);
+            }
+            return;
+        }
 
         setSelectedInstallments(prev => {
             const current = prev[saleId] || [];
@@ -376,9 +383,9 @@ export default function CustomersPage() {
                                                         {sale.installmentPlan?.installments.map(inst => (
                                                             <div
                                                                 key={`${sale.id}-${inst.number}`}
-                                                                onClick={() => inst.status !== 'Paid' && toggleInstallment(sale, inst)}
+                                                                onClick={() => toggleInstallment(sale, inst)}
                                                                 className={`p-3 rounded-2xl border transition-all text-left flex flex-col justify-between h-32 relative overflow-hidden cursor-pointer ${inst.status === 'Paid'
-                                                                    ? 'bg-green-50 border-green-100 text-green-700 opacity-60 cursor-default'
+                                                                    ? 'bg-green-50 border-green-100 text-green-700 opacity-90'
                                                                     : (selectedInstallments[sale.id] || []).includes(inst.number)
                                                                         ? 'border-purple-600 bg-purple-600 text-white ring-4 ring-purple-100 select-bounce'
                                                                         : 'bg-white border-gray-100 hover:border-purple-300 text-gray-600'

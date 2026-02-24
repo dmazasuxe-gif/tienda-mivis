@@ -40,6 +40,7 @@ interface DataContextType extends AppData {
     deleteSale: (id: string) => Promise<void>;
     recordPayment: (saleId: string, amount: number, method: string) => Promise<void>;
     recordInstallmentPayment: (saleId: string, installmentPayments: Record<number, number>, method: string) => Promise<void>;
+    reverseInstallmentPayment: (saleId: string, installmentNumber: number) => Promise<void>;
     resetAllData: () => Promise<void>;
     resetProducts: () => Promise<void>;
     resetCustomers: () => Promise<void>;
@@ -469,6 +470,62 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [sales, customers]);
 
+    const reverseInstallmentPayment = useCallback(async (saleId: string, installmentNumber: number) => {
+        try {
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale || !sale.installmentPlan) return;
+
+            const instIdx = sale.installmentPlan.installments.findIndex(i => i.number === installmentNumber);
+            if (instIdx === -1 || sale.installmentPlan.installments[instIdx].status === 'Pending') return;
+
+            const amountToReverse = sale.installmentPlan.installments[instIdx].amount;
+            const batch = writeBatch(db);
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+
+            // 1. Set installment back to Pending
+            const updatedInstallments = [...sale.installmentPlan.installments];
+            updatedInstallments[instIdx] = {
+                ...updatedInstallments[instIdx],
+                status: 'Pending'
+            };
+
+            // 2. Remove the last payment record from history (assuming it was the one)
+            // Or better, filter out the most recent payment with this amount
+            const updatedPayments = [...(sale.payments || [])];
+            // Find index of the most recent payment matching this amount
+            const payIdx = updatedPayments.map((p, i) => ({ ...p, i })).reverse().find(p => p.amount === amountToReverse)?.i;
+            if (payIdx !== undefined) {
+                updatedPayments.splice(payIdx, 1);
+            }
+
+            const newRemaining = (sale.remainingBalance || 0) + amountToReverse;
+
+            batch.update(saleRef, {
+                'installmentPlan.installments': updatedInstallments,
+                payments: updatedPayments,
+                remainingBalance: newRemaining,
+                status: 'Pending'
+            });
+
+            // 3. Update customer balance
+            if (sale.customerId) {
+                const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
+                const customer = customers.find(c => c.id === sale.customerId);
+                if (customer) {
+                    batch.update(customerRef, {
+                        balance: customer.balance + amountToReverse
+                    });
+                }
+            }
+
+            await batch.commit();
+            console.log('Installment payment reversed successfully');
+        } catch (error: any) {
+            console.error('Error reversing installment payment:', error);
+            setError(`Error al anular pago: ${error.message}`);
+        }
+    }, [sales, customers]);
+
     const recordPayment = useCallback(async (saleId: string, amount: number, method: string) => {
         try {
             const sale = sales.find(s => s.id === saleId);
@@ -634,6 +691,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             deleteSale,
             recordPayment,
             recordInstallmentPayment,
+            reverseInstallmentPayment,
             resetAllData,
             resetProducts,
             resetCustomers,
