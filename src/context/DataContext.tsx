@@ -18,6 +18,7 @@ import {
     writeBatch,
     increment,
     arrayUnion,
+    FieldValue,
 } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
@@ -220,10 +221,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const docRef = doc(db, COLLECTIONS.settings, 'config');
             await setDoc(docRef, newSettings);
             console.log('Settings updated successfully');
-        } catch (error: any) {
-            console.error('Error updating settings:', error);
-            setError(`Error al actualizar configuración: ${error.message}`);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error updating settings:', err);
+            setError(`Error al actualizar configuración: ${err.message}`);
+            throw err;
         }
     }, []);
 
@@ -239,10 +241,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const docRef = await addDoc(collection(db, COLLECTIONS.products), cleanData);
             console.log('Product added successfully with ID:', docRef.id);
             return docRef.id;
-        } catch (error: any) {
-            console.error('Error adding product to Firestore:', error);
-            setError(`Error al guardar producto: ${error.message || 'Error desconocido'}`);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error adding product to Firestore:', err);
+            setError(`Error al guardar producto: ${err.message || 'Error desconocido'}`);
+            throw err;
         }
     }, []);
 
@@ -268,10 +271,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const docRef = await addDoc(collection(db, COLLECTIONS.customers), cleanData);
             console.log('Customer added successfully with ID:', docRef.id);
             return docRef.id; // Return real Firestore ID
-        } catch (error: any) {
-            console.error('Error adding customer to Firestore:', error);
-            setError(`Error al guardar cliente: ${error.message || 'Error desconocido'}`);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error adding customer to Firestore:', err);
+            setError(`Error al guardar cliente: ${err.message || 'Error desconocido'}`);
+            throw err;
         }
     }, []);
 
@@ -284,9 +288,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
             const docRef = doc(db, COLLECTIONS.customers, id);
             await deleteDoc(docRef);
-        } catch (error: any) {
-            console.error('Error deleting customer:', error);
-            setError(`Error al eliminar cliente: ${error.message}`);
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error deleting customer:', err);
+            setError(`Error al eliminar cliente: ${err.message}`);
         }
     }, []);
 
@@ -320,7 +325,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // 3. Update customer info if customerId provided
             if (saleData.customerId) {
                 const customerRef = doc(db, COLLECTIONS.customers, saleData.customerId);
-                const updates: any = {
+                const updates: { history: FieldValue; balance?: FieldValue } = {
                     history: arrayUnion(saleRef.id),
                 };
 
@@ -334,12 +339,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Execute all operations atomically
             await batch.commit();
             console.log('Sale processed successfully');
-        } catch (error: any) {
-            console.error('Error processing sale in Firestore:', error);
-            setError(`Error al procesar venta: ${error.message || 'Error de conexión o permisos'}`);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error processing sale in Firestore:', err);
+            setError(`Error al procesar venta: ${err.message || 'Error de conexión o permisos'}`);
+            throw err;
         }
-    }, [products, customers]);
+    }, [products]);
 
     const deleteSale = useCallback(async (saleId: string) => {
         try {
@@ -373,10 +379,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             await batch.commit();
             console.log('Sale deleted and stocks reverted');
-        } catch (error: any) {
-            console.error('Error deleting sale:', error);
-            setError(`Error al eliminar venta: ${error.message}`);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error deleting sale:', err);
+            setError(`Error al eliminar venta: ${err.message}`);
+            throw err;
         }
     }, [sales, products]);
 
@@ -463,10 +470,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             await batch.commit();
             console.log('Installment payment recorded successfully');
-        } catch (error: any) {
-            console.error('Error recording installment payment:', error);
-            setError(`Error al registrar abono: ${error.message || 'Error de permisos o conexión'}`);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error recording installment payment:', err);
+            setError(`Error al registrar abono: ${err.message || 'Error de permisos o conexión'}`);
+            throw err;
         }
     }, [sales, customers]);
 
@@ -520,9 +528,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             await batch.commit();
             console.log('Installment payment reversed successfully');
-        } catch (error: any) {
-            console.error('Error reversing installment payment:', error);
-            setError(`Error al anular pago: ${error.message}`);
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error reversing installment payment:', err);
+            setError(`Error al anular pago: ${err.message}`);
         }
     }, [sales, customers]);
 
@@ -559,9 +568,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             await batch.commit();
-        } catch (error) {
-            console.error('Error recording payment:', error);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error recording payment:', err);
+            throw err;
         }
     }, [sales, customers]);
 
@@ -579,10 +589,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 'installmentPlan.installments': updatedInstallments
             });
             console.log('Installment date updated');
-        } catch (error: any) {
-            console.error('Error updating installment date:', error);
-            setError(`Error al actualizar fecha: ${error.message}`);
-            throw error;
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error updating installment date:', err);
+            setError(`Error al actualizar fecha: ${err.message}`);
+            throw err;
         }
     }, [sales]);
 
@@ -621,9 +632,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 batch.delete(doc(db, COLLECTIONS.products, p.id));
             });
             await batch.commit();
-        } catch (error: any) {
-            console.error('Error resetting products:', error);
-            setError(`Error al borrar productos: ${error.message}`);
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error resetting products:', err);
+            setError(`Error al borrar productos: ${err.message}`);
         }
     }, [products]);
 
@@ -634,23 +646,24 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 batch.delete(doc(db, COLLECTIONS.customers, c.id));
             });
             await batch.commit();
-        } catch (error: any) {
-            console.error('Error resetting customers:', error);
-            setError(`Error al borrar clientes: ${error.message}`);
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error resetting customers:', err);
+            setError(`Error al borrar clientes: ${err.message}`);
         }
     }, [customers]);
 
     const resetSales = useCallback(async () => {
         try {
-            // Re-fetch or use local sales
             const batch = writeBatch(db);
             sales.forEach(s => {
                 batch.delete(doc(db, COLLECTIONS.sales, s.id));
             });
             await batch.commit();
-        } catch (error: any) {
-            console.error('Error resetting sales:', error);
-            setError(`Error al borrar ventas: ${error.message}`);
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error resetting sales:', err);
+            setError(`Error al borrar ventas: ${err.message}`);
         }
     }, [sales]);
 
@@ -662,9 +675,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await resetProducts();
             setIsLoading(false);
             alert('¡Sistema reiniciado por completo!');
-        } catch (error: any) {
-            console.error('Error in total reset:', error);
-            setError(`Error en reinicio total: ${error.message}`);
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error in total reset:', err);
+            setError(`Error en reinicio total: ${err.message}`);
             setIsLoading(false);
         }
     }, [resetSales, resetCustomers, resetProducts]);

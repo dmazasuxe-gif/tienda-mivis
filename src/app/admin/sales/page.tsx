@@ -221,7 +221,7 @@ export default function SalesPage() {
                 status: paymentType === 'Cash' ? 'Paid' : 'Pending',
                 remainingBalance: paymentType === 'Credit' ? cartTotal : 0,
                 payments: paymentType === 'Cash' ? [{
-                    method: cashMethod as any,
+                    method: cashMethod as 'Cash' | 'Yape' | 'Plin',
                     amount: cartTotal,
                     date: new Date().toISOString()
                 }] : [],
@@ -674,7 +674,7 @@ export default function SalesPage() {
                                                 {['Cash', 'Yape', 'Plin'].map((m) => (
                                                     <button
                                                         key={m}
-                                                        onClick={() => setCashMethod(m as any)}
+                                                        onClick={() => setCashMethod(m as 'Cash' | 'Yape' | 'Plin')}
                                                         className={`py-2 px-1 rounded-lg border text-[10px] font-black uppercase transition-all ${cashMethod === m ? 'bg-purple-600 border-purple-600 text-white shadow-md' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-white'}`}
                                                     >
                                                         {m === 'Cash' ? 'Efectivo' : m}

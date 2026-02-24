@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useData } from '@/context/DataContext';
 import { ProductModal } from '@/components/ProductModal';
 import { Product } from '@/lib/types';
-import { Plus, Search, Edit2, Trash2, Archive, Printer } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Archive } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function InventoryPage() {
@@ -36,7 +36,7 @@ export default function InventoryPage() {
         setCurrentProduct(null);
     };
 
-    const handleSubmit = (data: any) => {
+    const handleSubmit = (data: Partial<Product>) => {
         if (currentProduct) {
             updateProduct(currentProduct.id, data as Partial<Product>);
         } else {

@@ -40,6 +40,7 @@ export interface Sale {
     status: 'Paid' | 'Pending';
     payments?: PaymentDetails[]; // History of partial payments
     remainingBalance?: number;
+    clientName?: string;
     installmentPlan?: {
         numberOfInstallments: number;
         paymentFrequency: 'Weekly' | 'Bi-weekly' | 'Monthly';

@@ -9,14 +9,24 @@ import {
     ShoppingCart, FileText, ArrowUpRight,
     ArrowDownRight, CreditCard, Trash2, X,
     Calendar, User as UserIcon, CheckCircle2, Clock,
-    MessageCircle
+    MessageCircle, LucideIcon
 } from 'lucide-react';
 import Link from 'next/link';
-import { Sale } from '@/lib/types';
+import { Sale, Product } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const StatCard = ({ title, value, icon: Icon, trend, trendValue, color, gradient }: any) => (
+interface StatCardProps {
+    title: string;
+    value: string;
+    icon: LucideIcon;
+    trend?: 'up' | 'down';
+    trendValue?: string;
+    color: string;
+    gradient: string;
+}
+
+const StatCard = ({ title, value, icon: Icon, trend, trendValue, color, gradient }: StatCardProps) => (
     <motion.div
         whileHover={{ y: -5, scale: 1.02 }}
         initial={{ opacity: 0, y: 20 }}
@@ -47,7 +57,15 @@ const StatCard = ({ title, value, icon: Icon, trend, trendValue, color, gradient
     </motion.div>
 );
 
-const QuickAction = ({ icon: Icon, label, onClick, href, color }: any) => {
+interface QuickActionProps {
+    icon: LucideIcon;
+    label: string;
+    onClick?: () => void;
+    href?: string;
+    color: string;
+}
+
+const QuickAction = ({ icon: Icon, label, onClick, href, color }: QuickActionProps) => {
     const content = (
         <motion.div
             whileHover={{ scale: 1.05 }}
@@ -128,15 +146,15 @@ export default function Dashboard() {
 
         // 2. STOCK POR CATEGORÍA
         message += `📦 *STOCK DE PRODUCTOS*\n`;
-        const categoryGroups = products.reduce((acc: Record<string, any[]>, p) => {
+        const categoryGroups = products.reduce((acc: Record<string, Product[]>, p: Product) => {
             if (!acc[p.category]) acc[p.category] = [];
             acc[p.category].push(p);
             return acc;
-        }, {});
+        }, {} as Record<string, Product[]>);
 
-        Object.entries(categoryGroups).forEach(([cat, items]) => {
+        Object.entries(categoryGroups).forEach(([cat, items]: [string, Product[]]) => {
             message += `*${cat.toUpperCase()}:*\n`;
-            items.forEach(p => {
+            items.forEach((p: Product) => {
                 const stockStatus = p.stock <= 3 ? '🔴' : '🟢';
                 message += `  ${stockStatus} ${p.name}: ${p.stock} unid.\n`;
             });
@@ -190,7 +208,7 @@ export default function Dashboard() {
     const generatePdfReport = () => {
         setIsGeneratingPdf(true);
         try {
-            const doc = new jsPDF() as any;
+            const doc = new jsPDF();
 
             // Header
             doc.setFillColor(139, 92, 246); // Purple-600
@@ -210,7 +228,7 @@ export default function Dashboard() {
             doc.text(`Total Ventas: S/ ${summary.totalSales.toFixed(2)}`, 25, 62);
             doc.text(`Ganancia Neta: S/ ${summary.totalProfit.toFixed(2)}`, 120, 55);
             doc.text(`Por Cobrar: S/ ${summary.pendingReceivables.toFixed(2)}`, 120, 62);
-            doc.text(`Cobrado Total (Efectivo/Yape/etc): S/ ${Object.values(paymentBreakdown).reduce((a: number, b: any) => a + b.total, 0).toFixed(2)}`, 25, 69);
+            doc.text(`Cobrado Total (Efectivo/Yape/etc): S/ ${Object.values(paymentBreakdown).reduce((acc, current) => acc + current.total, 0).toFixed(2)}`, 25, 69);
 
             // Payment Breakdown Table in PDF
             const breakdownRows = Object.entries(paymentBreakdown)
@@ -243,6 +261,7 @@ export default function Dashboard() {
             );
 
             autoTable(doc, {
+                /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
                 startY: (doc as any).lastAutoTable.finalY + 15,
                 head: [['Fecha', 'Producto', 'Cant.', 'Precio Unit.', 'Subtotal', 'Tipo', 'Estado']],
                 body: tableRows,
@@ -352,6 +371,7 @@ export default function Dashboard() {
                                                 <span className="text-sm font-black text-green-200 w-4">{idx + 1}</span>
                                                 <div className="w-10 h-10 rounded-xl overflow-hidden bg-white shrink-0 shadow-sm border border-green-50">
                                                     {p.images?.[0] ? (
+                                                        /* eslint-disable-next-line @next/next/no-img-element */
                                                         <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={16} /></div>
@@ -386,6 +406,7 @@ export default function Dashboard() {
                                                 <span className="text-sm font-black text-red-200 w-4">{idx + 1}</span>
                                                 <div className="w-10 h-10 rounded-xl overflow-hidden bg-white shrink-0 shadow-sm border border-red-50">
                                                     {p.images?.[0] ? (
+                                                        /* eslint-disable-next-line @next/next/no-img-element */
                                                         <img src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center text-gray-300"><Package size={16} /></div>
@@ -484,6 +505,7 @@ export default function Dashboard() {
                                             </span>
                                         </div>
                                         <button
+                                            type="button"
                                             onClick={(e) => handleDeleteSale(e, sale.id)}
                                             className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
                                             title="Eliminar Venta"
@@ -517,6 +539,7 @@ export default function Dashboard() {
                         >
                             <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-8 text-white relative">
                                 <button
+                                    type="button"
                                     onClick={() => setSelectedSale(null)}
                                     className="absolute top-6 right-6 p-2 bg-white/20 rounded-xl hover:bg-white/30 transition-colors"
                                     title="Cerrar"

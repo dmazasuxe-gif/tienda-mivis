@@ -3,7 +3,7 @@
 
 import { useState, useMemo } from 'react';
 import { useData } from '@/context/DataContext';
-import { Customer } from '@/lib/types';
+import { Customer, Sale } from '@/lib/types';
 import {
     User, DollarSign, Phone, Search,
     AlertCircle, CheckCircle2, ChevronRight, X, Calendar,
@@ -62,7 +62,7 @@ export default function CustomersPage() {
         setIsPaymentModalOpen(true);
     };
 
-    const toggleInstallment = async (sale: any, installment: any) => {
+    const toggleInstallment = async (sale: Sale, installment: { number: number; status: string; amount: number }) => {
         const saleId = sale.id;
         const installmentNumber = installment.number;
 
@@ -526,6 +526,7 @@ export default function CustomersPage() {
                                                             <div key={idx} className="flex gap-4 items-center bg-white p-3 rounded-xl border border-gray-100">
                                                                 <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex-shrink-0">
                                                                     {product?.images?.[0] ? (
+                                                                        /* eslint-disable-next-line @next/next/no-img-element */
                                                                         <img src={product.images[0]} alt={item.productName} className="w-full h-full object-cover" />
                                                                     ) : (
                                                                         <div className="w-full h-full flex items-center justify-center text-gray-200">
