@@ -126,20 +126,19 @@ export default function Dashboard() {
         const phone = settings.whatsapp || '51999509661';
         const now = new Date();
         const dateStr = now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+        const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true });
 
         let message = `📝 *REPORTE GENERAL - ${dateStr} (${timeStr})*\n`;
         message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
         // 1. VENTAS REALIZADAS
-        message += `🛒 *HISTORIAL DE VENTAS*\n`;
+        message += `📝 *HISTORIAL DE VENTAS*\n`;
         if (sales.length === 0) {
             message += `_No se registran ventas_\n`;
         } else {
             sales.forEach(sale => {
-                const day = new Date(sale.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
                 const client = sale.clientName || 'G. Pasajero';
-                message += `• ${day} | ${client} | *S/ ${sale.total.toFixed(2)}*\n`;
+                message += `• ${client} | *S/ ${sale.total.toFixed(2)}*\n`;
             });
         }
         message += `\n`;
@@ -172,7 +171,7 @@ export default function Dashboard() {
         message += `\n`;
 
         // 4. CLIENTES DEUDORES Y CUOTAS
-        message += `⚠️ *CLIENTES CON CRÉDITO ACTIVO*\n`;
+        message += `📋 *CLIENTES CON CRÉDITO ACTIVO*\n`;
         const debtors = customers.filter(c => c.balance > 0);
         if (debtors.length === 0) {
             message += `_Sin deudas pendientes_\n`;
