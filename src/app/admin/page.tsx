@@ -110,65 +110,71 @@ export default function Dashboard() {
         const dateStr = now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
         const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
 
-        const totalOps = Object.values(paymentBreakdown).reduce((a, b) => a + b.count, 0);
-        const avgTicket = totalOps > 0 ? summary.totalSales / totalOps : 0;
-        const profitMargin = summary.totalSales > 0 ? (summary.totalProfit / summary.totalSales) * 100 : 0;
-
-        let message = `🏢 *MIVISSHOPPING - REPORTE EJECUTIVO*\n`;
-        message += `📅 *Fecha:* ${dateStr} | 🕒 *Hora:* ${timeStr}\n`;
+        let message = `📝 *REPORTE GENERAL - ${dateStr} (${timeStr})*\n`;
         message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
-        message += `💰 *RESUMEN ESTRATÉGICO*\n`;
-        message += `• *Ingresos Brutos:* S/ ${summary.totalSales.toFixed(2)}\n`;
-        message += `• *Utilidad Operativa:* S/ ${summary.totalProfit.toFixed(2)}\n`;
-        message += `• *Margen de Utilidad:* ${profitMargin.toFixed(1)}%\n`;
-        message += `• *Ticket Promedio:* S/ ${avgTicket.toFixed(2)}\n`;
-        message += `• *Volumen Ops:* ${totalOps} transacciones\n\n`;
-
-        message += `🚀 *BITÁCORA DE VENTAS (Últimas 15)*\n`;
-        const recentSalesList = [...sales]
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 15);
-
-        if (recentSalesList.length === 0) {
-            message += `_No se registran ventas recientes_\n`;
+        // 1. VENTAS REALIZADAS
+        message += `🛒 *HISTORIAL DE VENTAS*\n`;
+        if (sales.length === 0) {
+            message += `_No se registran ventas_\n`;
         } else {
-            recentSalesList.forEach(sale => {
+            sales.forEach(sale => {
                 const day = new Date(sale.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
-                sale.items.forEach(item => {
-                    message += `▫️ ${day} | ${item.productName.toUpperCase()} [x${item.quantity}]\n`;
-                });
+                const client = sale.clientName || 'G. Pasajero';
+                message += `• ${day} | ${client} | *S/ ${sale.total.toFixed(2)}*\n`;
             });
         }
         message += `\n`;
 
-        message += `💳 *LIQUIDEZ POR MEDIO DE PAGO*\n`;
-        Object.entries(paymentBreakdown)
-            .filter(([, data]) => data.total > 0)
-            .forEach(([method, data]) => {
-                const methodName = method === 'Cash' ? 'EFECTIVO' : method.toUpperCase();
-                const share = (data.total / summary.totalSales) * 100;
-                message += `• ${methodName}: S/ ${data.total.toFixed(2)} (${share.toFixed(1)}%)\n`;
+        // 2. STOCK POR CATEGORÍA
+        message += `📦 *STOCK DE PRODUCTOS*\n`;
+        const categoryGroups = products.reduce((acc: Record<string, any[]>, p) => {
+            if (!acc[p.category]) acc[p.category] = [];
+            acc[p.category].push(p);
+            return acc;
+        }, {});
+
+        Object.entries(categoryGroups).forEach(([cat, items]) => {
+            message += `*${cat.toUpperCase()}:*\n`;
+            items.forEach(p => {
+                const stockStatus = p.stock <= 3 ? '🔴' : '🟢';
+                message += `  ${stockStatus} ${p.name}: ${p.stock} unid.\n`;
             });
+        });
         message += `\n`;
 
-        message += `⚠️ *ANÁLISIS DE RIESGO (DEUDORES)*\n`;
-        const debtors = [...customers]
-            .filter(c => c.balance > 0)
-            .sort((a, b) => b.balance - a.balance);
+        // 3. MONTOS TOTALES POR MÉTODO
+        message += `💳 *TOTALES POR MÉTODO DE PAGO*\n`;
+        const methods = ['Cash', 'Yape', 'Plin', 'Transfer'];
+        methods.forEach(m => {
+            const data = paymentBreakdown[m] || { total: 0, count: 0 };
+            const mName = m === 'Cash' ? 'EFECTIVO' : m.toUpperCase();
+            message += `• ${mName}: *S/ ${data.total.toFixed(2)}*\n`;
+        });
+        message += `\n`;
 
-        message += `• *Cartera por Cobrar:* S/ ${summary.pendingReceivables.toFixed(2)}\n`;
+        // 4. CLIENTES DEUDORES Y CUOTAS
+        message += `⚠️ *CLIENTES CON CRÉDITO ACTIVO*\n`;
+        const debtors = customers.filter(c => c.balance > 0);
         if (debtors.length === 0) {
-            message += `_Situación: Cartera al día_\n`;
+            message += `_Sin deudas pendientes_\n`;
         } else {
-            message += `_Top 5 Saldos Pendientes:_\n`;
-            debtors.slice(0, 8).forEach(c => {
-                message += `• ${c.name.split(' ')[0]}: S/ ${c.balance.toFixed(2)}\n`;
+            debtors.forEach(c => {
+                message += `👤 *${c.name}: S/ ${c.balance.toFixed(2)}*\n`;
+                // Find pending installments
+                const pendingSales = sales.filter(s => s.customerId === c.id && s.type === 'Credit' && s.status === 'Pending');
+                pendingSales.forEach(sale => {
+                    const pendingInsts = sale.installmentPlan?.installments.filter(inst => inst.status === 'Pending') || [];
+                    pendingInsts.forEach(inst => {
+                        const dueDate = new Date(inst.dueDate).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
+                        message += `  - Cuota ${inst.number}: S/ ${inst.amount.toFixed(2)} (vence ${dueDate})\n`;
+                    });
+                });
             });
         }
 
         message += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
-        message += `*Generado por Mivis Intelligence™*`;
+        message += `*Reporte Generado por MivisShopping*`;
 
         const encodedMessage = encodeURIComponent(message);
         window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
@@ -204,7 +210,7 @@ export default function Dashboard() {
             doc.text(`Total Ventas: S/ ${summary.totalSales.toFixed(2)}`, 25, 62);
             doc.text(`Ganancia Neta: S/ ${summary.totalProfit.toFixed(2)}`, 120, 55);
             doc.text(`Por Cobrar: S/ ${summary.pendingReceivables.toFixed(2)}`, 120, 62);
-            doc.text(`Cobrado Total (Efectivo/Yape/etc): S/ ${Object.values(paymentBreakdown).reduce((a, b) => a + b.total, 0).toFixed(2)}`, 25, 69);
+            doc.text(`Cobrado Total (Efectivo/Yape/etc): S/ ${Object.values(paymentBreakdown).reduce((a: number, b: any) => a + b.total, 0).toFixed(2)}`, 25, 69);
 
             // Payment Breakdown Table in PDF
             const breakdownRows = Object.entries(paymentBreakdown)
