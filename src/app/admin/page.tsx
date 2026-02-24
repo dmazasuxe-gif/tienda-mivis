@@ -108,11 +108,26 @@ export default function Dashboard() {
         const phone = settings.whatsapp || '51999509661';
         const dateStr = new Date().toLocaleDateString();
 
-        let message = `📊 *REPORTE DE VENTAS - ${dateStr}*\n`;
+        let message = `📊 *REPORTE DETALLADO - ${dateStr}*\n`;
         message += `---------------------------\n`;
         message += `💰 *Ventas Totales:* S/ ${summary.totalSales.toFixed(2)}\n`;
         message += `📈 *Ganancia:* S/ ${summary.totalProfit.toFixed(2)}\n`;
         message += `👤 *Por Cobrar:* S/ ${summary.pendingReceivables.toFixed(2)}\n`;
+        message += `---------------------------\n`;
+
+        message += `🚀 *PRODUCTOS VENDIDOS (RECIENTES):*\n`;
+        // Top 15 recent sales matches
+        const recentSalesList = [...sales]
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 15);
+
+        recentSalesList.forEach(sale => {
+            const date = new Date(sale.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
+            sale.items.forEach(item => {
+                message += `• ${date} | ${item.productName} (${item.quantity})\n`;
+            });
+        });
+
         message += `---------------------------\n`;
         message += `💳 *DESGLOSE POR MÉTODO:*\n`;
 
@@ -124,15 +139,18 @@ export default function Dashboard() {
             });
 
         message += `---------------------------\n`;
-        message += `📦 *TOP PRODUCTOS:*\n`;
+        message += `⚠️ *CLIENTES DEUDORES (Saldos):*\n`;
+        const debtors = [...customers]
+            .filter(c => c.balance > 0)
+            .sort((a, b) => b.balance - a.balance);
 
-        const topProducts = [...products]
-            .sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))
-            .slice(0, 5);
-
-        topProducts.forEach(p => {
-            message += `- ${p.name}: ${p.soldCount || 0} vendidos\n`;
-        });
+        if (debtors.length === 0) {
+            message += `_No hay saldos pendientes_\n`;
+        } else {
+            debtors.forEach(c => {
+                message += `• ${c.name}: *S/ ${c.balance.toFixed(2)}*\n`;
+            });
+        }
 
         const encodedMessage = encodeURIComponent(message);
         window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');

@@ -15,8 +15,7 @@ export default function InventoryPage() {
     const [searchTerm, setSearchTerm] = useState('');
 
     const filteredProducts = products.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.barcode.includes(searchTerm)
+        p.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
 
@@ -76,7 +75,7 @@ export default function InventoryPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                         <input
                             type="text"
-                            placeholder="Buscar por nombre o código de barras..."
+                            placeholder="Buscar por nombre..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             aria-label="Buscar productos"
@@ -130,7 +129,6 @@ export default function InventoryPage() {
                                                 </div>
                                                 <div className="ml-4">
                                                     <div className="text-sm font-medium text-gray-900">{product.name}</div>
-                                                    <div className="text-xs text-gray-500">{product.barcode}</div>
                                                 </div>
                                             </div>
                                         </td>

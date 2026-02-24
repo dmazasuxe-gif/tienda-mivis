@@ -92,11 +92,6 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Código de Barras</label>
-                            <input {...register('barcode')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all" placeholder="Referencia o código" />
-                        </div>
-
-                        <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Categoría</label>
                             <select {...register('category')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all bg-white">
                                 <option value="ROPA PARA DAMAS">ROPA PARA DAMAS</option>
