@@ -11,6 +11,7 @@ export interface Product {
     images: string[]; // Supports multiple images
     tags?: string[];
     active: boolean;
+    soldCount?: number;
 }
 
 export interface SaleItem {

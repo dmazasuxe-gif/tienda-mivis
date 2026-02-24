@@ -7,7 +7,7 @@ import { Customer } from '@/lib/types';
 import {
     User, DollarSign, Phone, Search,
     AlertCircle, CheckCircle2, ChevronRight, X, Calendar,
-    CreditCard, Loader2, Trash2, RefreshCcw, Package
+    CreditCard, Loader2, Trash2, RefreshCcw, Package, Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -24,6 +24,7 @@ export default function CustomersPage() {
     const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Yape' | 'Plin' | 'Transfer'>('Cash');
     const [editingInstallment, setEditingInstallment] = useState<{ saleId: string, installmentNumber: number, currentDate: string } | null>(null);
     const [selectedCustomerForDetail, setSelectedCustomerForDetail] = useState<Customer | null>(null);
+    const [customAmounts, setCustomAmounts] = useState<Record<string, Record<number, number>>>({});
 
     // Filter customers
     const filteredCustomers = useMemo(() => {
@@ -46,25 +47,25 @@ export default function CustomersPage() {
     const totalSelectedAmount = useMemo(() => {
         let total = 0;
         Object.entries(selectedInstallments).forEach(([saleId, numbers]) => {
-            const sale = activeSales.find(s => s.id === saleId);
-            if (sale && sale.installmentPlan) {
-                numbers.forEach(num => {
-                    const inst = sale.installmentPlan?.installments.find(i => i.number === num);
-                    if (inst) total += inst.amount;
-                });
-            }
+            numbers.forEach(num => {
+                total += customAmounts[saleId]?.[num] || 0;
+            });
         });
         return total;
-    }, [selectedInstallments, activeSales]);
+    }, [selectedInstallments, customAmounts]);
 
     const handleOpenPayment = (customer: Customer) => {
         setSelectedCustomer(customer);
         setSelectedInstallments({});
+        setCustomAmounts({});
         setPaymentMethod('Cash');
         setIsPaymentModalOpen(true);
     };
 
-    const toggleInstallment = (saleId: string, installmentNumber: number) => {
+    const toggleInstallment = (sale: any, installment: any) => {
+        const saleId = sale.id;
+        const installmentNumber = installment.number;
+
         setSelectedInstallments(prev => {
             const current = prev[saleId] || [];
             const exists = current.includes(installmentNumber);
@@ -77,6 +78,27 @@ export default function CustomersPage() {
                 [saleId]: next
             };
         });
+
+        if (!(selectedInstallments[saleId] || []).includes(installmentNumber)) {
+            setCustomAmounts(prev => ({
+                ...prev,
+                [saleId]: {
+                    ...(prev[saleId] || {}),
+                    [installmentNumber]: installment.amount
+                }
+            }));
+        }
+    };
+
+    const handleCustomAmountChange = (saleId: string, num: number, value: string) => {
+        const amount = parseFloat(value) || 0;
+        setCustomAmounts(prev => ({
+            ...prev,
+            [saleId]: {
+                ...(prev[saleId] || {}),
+                [num]: amount
+            }
+        }));
     };
 
     const handleUpdateInstallmentDate = async (newDate: string) => {
@@ -94,10 +116,13 @@ export default function CustomersPage() {
 
         setIsProcessing(true);
         try {
-            // Process each sale that has selected installments
             for (const [saleId, numbers] of Object.entries(selectedInstallments)) {
                 if (numbers.length > 0) {
-                    await recordInstallmentPayment(saleId, numbers, paymentMethod);
+                    const paymentsForThisSale: Record<number, number> = {};
+                    numbers.forEach(num => {
+                        paymentsForThisSale[num] = customAmounts[saleId][num];
+                    });
+                    await recordInstallmentPayment(saleId, paymentsForThisSale, paymentMethod);
                 }
             }
             setIsPaymentModalOpen(false);
@@ -304,7 +329,7 @@ export default function CustomersPage() {
                                 {/* Payment Method */}
                                 <div>
                                     <label className="text-xs font-black text-gray-400 uppercase tracking-widest mb-4 block">MÉTODO DE PAGO</label>
-                                    <div className="grid grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-4 gap-3">
                                         {(['Cash', 'Yape', 'Plin', 'Transfer'] as const).map(method => (
                                             <button
                                                 key={method}
@@ -349,12 +374,11 @@ export default function CustomersPage() {
 
                                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                         {sale.installmentPlan?.installments.map(inst => (
-                                                            <button
+                                                            <div
                                                                 key={`${sale.id}-${inst.number}`}
-                                                                disabled={inst.status === 'Paid'}
-                                                                onClick={() => toggleInstallment(sale.id, inst.number)}
-                                                                className={`p-3 rounded-2xl border transition-all text-left flex flex-col justify-between h-20 relative overflow-hidden ${inst.status === 'Paid'
-                                                                    ? 'bg-green-50 border-green-100 text-green-700 opacity-60'
+                                                                onClick={() => inst.status !== 'Paid' && toggleInstallment(sale, inst)}
+                                                                className={`p-3 rounded-2xl border transition-all text-left flex flex-col justify-between h-32 relative overflow-hidden cursor-pointer ${inst.status === 'Paid'
+                                                                    ? 'bg-green-50 border-green-100 text-green-700 opacity-60 cursor-default'
                                                                     : (selectedInstallments[sale.id] || []).includes(inst.number)
                                                                         ? 'border-purple-600 bg-purple-600 text-white ring-4 ring-purple-100 select-bounce'
                                                                         : 'bg-white border-gray-100 hover:border-purple-300 text-gray-600'
@@ -364,7 +388,7 @@ export default function CustomersPage() {
                                                                     <span className="text-[10px] font-black opacity-60">CUOTA #{inst.number}</span>
                                                                     <div className="flex gap-1 items-center">
                                                                         {inst.status === 'Pending' && (
-                                                                            <div
+                                                                            <button
                                                                                 onClick={(e) => {
                                                                                     e.stopPropagation();
                                                                                     setEditingInstallment({
@@ -377,18 +401,33 @@ export default function CustomersPage() {
                                                                                 title="Cambiar fecha de pago"
                                                                             >
                                                                                 <Calendar size={12} />
-                                                                            </div>
+                                                                            </button>
                                                                         )}
                                                                         {inst.status === 'Paid' && <CheckCircle2 size={12} />}
                                                                     </div>
                                                                 </div>
-                                                                <span className="text-sm font-black">S/ {inst.amount.toFixed(2)}</span>
+
+                                                                {(selectedInstallments[sale.id] || []).includes(inst.number) ? (
+                                                                    <div className="flex items-center gap-1 bg-white/20 p-1 rounded-lg">
+                                                                        <span className="text-xs font-bold">S/</span>
+                                                                        <input
+                                                                            type="number"
+                                                                            title="Monto a pagar"
+                                                                            value={customAmounts[sale.id]?.[inst.number] ?? inst.amount}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            onChange={(e) => handleCustomAmountChange(sale.id, inst.number, e.target.value)}
+                                                                            className="w-full bg-transparent border-none outline-none font-black text-white p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-sm font-black">S/ {inst.amount.toFixed(2)}</span>
+                                                                )}
 
                                                                 {/* Due date indicator */}
                                                                 <span className="text-[10px] opacity-60 font-medium">
                                                                     Vence: {new Date(inst.dueDate).toLocaleDateString('es-PE', { day: 'numeric', month: 'short' })}
                                                                 </span>
-                                                            </button>
+                                                            </div>
                                                         ))}
                                                     </div>
                                                 </div>
@@ -435,116 +474,120 @@ export default function CustomersPage() {
 
             {/* TASK 3: CREDIT DETAIL MODAL */}
             <AnimatePresence>
-                {selectedCustomerForDetail && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white rounded-[2.5rem] w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
-                        >
-                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                                <div>
-                                    <h2 className="text-xl font-black text-gray-900 leading-tight">Detalle de Compras</h2>
-                                    <p className="text-xs text-gray-500 font-medium">{selectedCustomerForDetail.name}</p>
+                {
+                    selectedCustomerForDetail && (
+                        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                className="bg-white rounded-[2.5rem] w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col shadow-2xl"
+                            >
+                                <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                                    <div>
+                                        <h2 className="text-xl font-black text-gray-900 leading-tight">Detalle de Compras</h2>
+                                        <p className="text-xs text-gray-500 font-medium">{selectedCustomerForDetail.name}</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setSelectedCustomerForDetail(null)}
+                                        className="p-2 hover:bg-gray-100 rounded-xl transition-all"
+                                        title="Cerrar"
+                                    >
+                                        <X size={20} className="text-gray-400" />
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={() => setSelectedCustomerForDetail(null)}
-                                    className="p-2 hover:bg-gray-100 rounded-xl transition-all"
-                                    title="Cerrar"
-                                >
-                                    <X size={20} className="text-gray-400" />
-                                </button>
-                            </div>
 
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                {sales
-                                    .filter(s => s.customerId === selectedCustomerForDetail.id)
-                                    .map(sale => (
-                                        <div key={sale.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-4">
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">FECHA DE VENTA</p>
-                                                    <p className="text-xs font-bold text-gray-800">{new Date(sale.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                                    {sales
+                                        .filter(s => s.customerId === selectedCustomerForDetail.id)
+                                        .map(sale => (
+                                            <div key={sale.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-4">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">FECHA DE VENTA</p>
+                                                        <p className="text-xs font-bold text-gray-800">{new Date(sale.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                                                    </div>
+                                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${sale.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                        {sale.status === 'Paid' ? 'PAGADO' : 'PENDIENTE'}
+                                                    </span>
                                                 </div>
-                                                <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter ${sale.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                    {sale.status === 'Paid' ? 'PAGADO' : 'PENDIENTE'}
-                                                </span>
-                                            </div>
 
-                                            <div className="space-y-3">
-                                                {sale.items.map((item, idx) => {
-                                                    const product = products.find(p => p.id === item.productId);
-                                                    return (
-                                                        <div key={idx} className="flex gap-4 items-center bg-white p-3 rounded-xl border border-gray-100">
-                                                            <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex-shrink-0">
-                                                                {product?.images?.[0] ? (
-                                                                    <img src={product.images[0]} alt={item.productName} className="w-full h-full object-cover" />
-                                                                ) : (
-                                                                    <div className="w-full h-full flex items-center justify-center text-gray-200">
-                                                                        <Package size={20} />
-                                                                    </div>
-                                                                )}
+                                                <div className="space-y-3">
+                                                    {sale.items.map((item, idx) => {
+                                                        const product = products.find(p => p.id === item.productId);
+                                                        return (
+                                                            <div key={idx} className="flex gap-4 items-center bg-white p-3 rounded-xl border border-gray-100">
+                                                                <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-50 border border-gray-100 flex-shrink-0">
+                                                                    {product?.images?.[0] ? (
+                                                                        <img src={product.images[0]} alt={item.productName} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        <div className="w-full h-full flex items-center justify-center text-gray-200">
+                                                                            <Package size={20} />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-black text-gray-900 leading-tight mb-1">{item.productName}</p>
+                                                                    <p className="text-[10px] font-bold text-purple-600">S/ {item.salePrice.toFixed(2)} x {item.quantity}</p>
+                                                                </div>
                                                             </div>
-                                                            <div className="flex-1 min-w-0">
-                                                                <p className="text-sm font-black text-gray-900 leading-tight mb-1">{item.productName}</p>
-                                                                <p className="text-[10px] font-bold text-purple-600">S/ {item.salePrice.toFixed(2)} x {item.quantity}</p>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
 
-                                            <div className="pt-3 border-t border-dashed border-gray-200 flex justify-between items-end">
-                                                <div>
-                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">PLAN DE PAGOS</p>
-                                                    <p className="text-xs font-bold text-gray-700">{sale.installmentPlan?.numberOfInstallments} cuotas</p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">TOTAL VENTA</p>
-                                                    <p className="text-lg font-black text-gray-900">S/ {sale.total.toFixed(2)}</p>
+                                                <div className="pt-3 border-t border-dashed border-gray-200 flex justify-between items-end">
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">PLAN DE PAGOS</p>
+                                                        <p className="text-xs font-bold text-gray-700">{sale.installmentPlan?.numberOfInstallments} cuotas</p>
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">TOTAL VENTA</p>
+                                                        <p className="text-lg font-black text-gray-900">S/ {sale.total.toFixed(2)}</p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                                        ))}
+                                </div>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             {/* TASK 1: DATE EDIT OVERLAY */}
             <AnimatePresence>
-                {editingInstallment && (
-                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150] flex items-center justify-center">
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white p-6 rounded-3xl shadow-2xl space-y-4 max-w-xs w-full"
-                        >
-                            <div className="flex justify-between items-center">
-                                <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Cambiar Fecha</h3>
-                                <button onClick={() => setEditingInstallment(null)} title="Cerrar"><X size={16} className="text-gray-400" /></button>
-                            </div>
-                            <label htmlFor="installmentDate" className="sr-only">Fecha de Cuota</label>
-                            <input
-                                id="installmentDate"
-                                type="date"
-                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-gray-800"
-                                value={editingInstallment.currentDate.split('T')[0]}
-                                onChange={(e) => setEditingInstallment({ ...editingInstallment, currentDate: e.target.value })}
-                            />
-                            <button
-                                onClick={() => handleUpdateInstallmentDate(editingInstallment.currentDate)}
-                                className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all"
+                {
+                    editingInstallment && (
+                        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[150] flex items-center justify-center">
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                className="bg-white p-6 rounded-3xl shadow-2xl space-y-4 max-w-xs w-full"
                             >
-                                Cambiar Fecha
-                            </button>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-widest">Cambiar Fecha</h3>
+                                    <button onClick={() => setEditingInstallment(null)} title="Cerrar"><X size={16} className="text-gray-400" /></button>
+                                </div>
+                                <label htmlFor="installmentDate" className="sr-only">Fecha de Cuota</label>
+                                <input
+                                    id="installmentDate"
+                                    type="date"
+                                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-gray-800"
+                                    value={editingInstallment.currentDate.split('T')[0]}
+                                    onChange={(e) => setEditingInstallment({ ...editingInstallment, currentDate: e.target.value })}
+                                />
+                                <button
+                                    onClick={() => handleUpdateInstallmentDate(editingInstallment.currentDate)}
+                                    className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold hover:bg-black transition-all"
+                                >
+                                    Cambiar Fecha
+                                </button>
+                            </motion.div>
+                        </div>
+                    )
+                }
+            </AnimatePresence >
 
             <style jsx global>{`
                 @keyframes select-bounce {
@@ -556,6 +599,6 @@ export default function CustomersPage() {
                     animation: select-bounce 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
                 }
             `}</style>
-        </div>
+        </div >
     );
 }

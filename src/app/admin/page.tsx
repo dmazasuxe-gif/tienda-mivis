@@ -8,7 +8,8 @@ import {
     DollarSign, Package, Users, Activity,
     ShoppingCart, FileText, ArrowUpRight,
     ArrowDownRight, CreditCard, Trash2, X,
-    Calendar, User as UserIcon, CheckCircle2, Clock
+    Calendar, User as UserIcon, CheckCircle2, Clock,
+    MessageCircle
 } from 'lucide-react';
 import Link from 'next/link';
 import { Sale } from '@/lib/types';
@@ -66,7 +67,7 @@ const QuickAction = ({ icon: Icon, label, onClick, href, color }: any) => {
 };
 
 export default function Dashboard() {
-    const { getFinancialSummary, sales, deleteSale, customers, products } = useData();
+    const { getFinancialSummary, sales, deleteSale, customers, products, settings } = useData();
     const summary = getFinancialSummary();
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -103,6 +104,40 @@ export default function Dashboard() {
 
     const paymentBreakdown = getPaymentBreakdown();
 
+    const sendWhatsAppReport = () => {
+        const phone = settings.whatsapp || '51999509661';
+        const dateStr = new Date().toLocaleDateString();
+
+        let message = `📊 *REPORTE DE VENTAS - ${dateStr}*\n`;
+        message += `---------------------------\n`;
+        message += `💰 *Ventas Totales:* S/ ${summary.totalSales.toFixed(2)}\n`;
+        message += `📈 *Ganancia:* S/ ${summary.totalProfit.toFixed(2)}\n`;
+        message += `👤 *Por Cobrar:* S/ ${summary.pendingReceivables.toFixed(2)}\n`;
+        message += `---------------------------\n`;
+        message += `💳 *DESGLOSE POR MÉTODO:*\n`;
+
+        Object.entries(paymentBreakdown)
+            .filter(([, data]) => data.total > 0)
+            .forEach(([method, data]) => {
+                const methodName = method === 'Cash' ? 'Efectivo' : method;
+                message += `- ${methodName}: S/ ${data.total.toFixed(2)} (${data.count} ops)\n`;
+            });
+
+        message += `---------------------------\n`;
+        message += `📦 *TOP PRODUCTOS:*\n`;
+
+        const topProducts = [...products]
+            .sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))
+            .slice(0, 5);
+
+        topProducts.forEach(p => {
+            message += `- ${p.name}: ${p.soldCount || 0} vendidos\n`;
+        });
+
+        const encodedMessage = encodeURIComponent(message);
+        window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
+    };
+
     const handleDeleteSale = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (window.confirm('¿Estás seguro de eliminar esta venta? El stock y balances serán revertidos.')) {
@@ -137,7 +172,7 @@ export default function Dashboard() {
 
             // Payment Breakdown Table in PDF
             const breakdownRows = Object.entries(paymentBreakdown)
-                .filter(([_, data]) => data.total > 0)
+                .filter(([, data]) => data.total > 0)
                 .map(([method, data]) => [
                     method === 'Cash' ? 'Efectivo' : method,
                     data.count.toString(),
@@ -200,8 +235,14 @@ export default function Dashboard() {
                     <QuickAction icon={Users} label="Clientes" href="/admin/customers" color="orange" />
                     <QuickAction
                         icon={isGeneratingPdf ? Activity : FileText}
-                        label={isGeneratingPdf ? "..." : "PDF Reporte"}
+                        label={isGeneratingPdf ? "..." : "PDF"}
                         onClick={generatePdfReport}
+                        color="red"
+                    />
+                    <QuickAction
+                        icon={MessageCircle}
+                        label="WhatsApp"
+                        onClick={sendWhatsAppReport}
                         color="green"
                     />
                 </div>
@@ -342,7 +383,7 @@ export default function Dashboard() {
                                     </thead>
                                     <tbody className="divide-y divide-gray-50">
                                         {Object.entries(paymentBreakdown)
-                                            .filter(([_, data]) => data.total > 0)
+                                            .filter(([, data]) => data.total > 0)
                                             .map(([method, data]) => (
                                                 <tr key={method} className="hover:bg-gray-50/50 transition-colors">
                                                     <td className="px-4 py-3 text-sm font-bold text-gray-700">{method === 'Cash' ? 'Efectivo' : method}</td>

@@ -20,39 +20,7 @@ export default function InventoryPage() {
     );
 
 
-    const handlePrintLabel = (product: Product) => {
-        const printWindow = window.open('', '_blank', 'width=400,height=400');
-        if (printWindow) {
-            printWindow.document.write(`
-        <html>
-          <head>
-            <title>Etiqueta - ${product.name}</title>
-            <style>
-              body { font-family: 'Arial', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-              .label { text-align: center; border: 2px dashed #000; padding: 20px; border-radius: 10px; }
-              h2 { font-size: 14px; margin: 0 0 5px 0; max-width: 200px; }
-              p { font-size: 18px; font-weight: bold; margin: 5px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="label">
-              <h2>${product.name}</h2>
-              <svg id="barcode"></svg>
-              <p>S/ ${product.salePrice.toFixed(2)}</p>
-            </div>
-            <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
-            <script>
-              try {
-                JsBarcode("#barcode", "${product.barcode}", { format: "CODE128", width: 2, height: 40, displayValue: true });
-                window.onload = function() { window.print(); }
-              } catch (e) { console.error(e); }
-            </script>
-          </body>
-        </html>
-      `);
-            printWindow.document.close();
-        }
-    };
+
 
     const handleOpenModal = (product?: Product) => {
 
@@ -182,9 +150,7 @@ export default function InventoryPage() {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
 
-                                            <button onClick={() => handlePrintLabel(product)} className="text-blue-600 hover:text-blue-900 p-2 hover:bg-blue-50 rounded-lg transition-colors mr-2" title="Imprimir Etiqueta">
-                                                <Printer size={16} />
-                                            </button>
+
                                             <button onClick={() => handleOpenModal(product)} className="text-purple-600 hover:text-purple-900 p-2 hover:bg-purple-50 rounded-lg transition-colors mr-2" title="Editar">
                                                 <Edit2 size={16} />
                                             </button>

@@ -39,7 +39,7 @@ interface DataContextType extends AppData {
     deleteCustomer: (id: string) => Promise<void>;
     deleteSale: (id: string) => Promise<void>;
     recordPayment: (saleId: string, amount: number, method: string) => Promise<void>;
-    recordInstallmentPayment: (saleId: string, installmentNumbers: number[], method: string) => Promise<void>;
+    recordInstallmentPayment: (saleId: string, installmentPayments: Record<number, number>, method: string) => Promise<void>;
     resetAllData: () => Promise<void>;
     resetProducts: () => Promise<void>;
     resetCustomers: () => Promise<void>;
@@ -383,9 +383,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Payment Recording
     // ────────────────────────────────────────────────
 
-    const recordInstallmentPayment = useCallback(async (saleId: string, installmentNumbers: number[], method: string) => {
+    const recordInstallmentPayment = useCallback(async (saleId: string, installmentPayments: Record<number, number>, method: string) => {
         try {
-            console.log('Recording installment payment...', { saleId, installments: installmentNumbers });
+            console.log('Recording installment payment...', { saleId, payments: installmentPayments });
             const sale = sales.find(s => s.id === saleId);
             if (!sale || !sale.installmentPlan) {
                 console.error('Sale or installment plan not found');
@@ -395,19 +395,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const batch = writeBatch(db);
             const saleRef = doc(db, COLLECTIONS.sales, saleId);
 
-            // Calculate total to pay and update installment statuses
+            // Calculate total to pay and update installment statuses/amounts
             let totalPaid = 0;
-            const updatedInstallments = sale.installmentPlan.installments.map(inst => {
-                if (installmentNumbers.includes(inst.number) && inst.status === 'Pending') {
-                    totalPaid += inst.amount;
-                    return { ...inst, status: 'Paid' as const };
+            let redistributionPool = 0;
+            const updatedInstallments = [...sale.installmentPlan.installments];
+
+            // 1. Process explicit payments
+            Object.entries(installmentPayments).forEach(([numStr, paidAmount]) => {
+                const num = parseInt(numStr);
+                const idx = updatedInstallments.findIndex(i => i.number === num);
+                if (idx !== -1 && updatedInstallments[idx].status === 'Pending') {
+                    const originalAmount = updatedInstallments[idx].amount;
+                    totalPaid += paidAmount;
+                    redistributionPool += (originalAmount - paidAmount);
+                    updatedInstallments[idx] = {
+                        ...updatedInstallments[idx],
+                        amount: paidAmount,
+                        status: 'Paid' as const
+                    };
                 }
-                return inst;
             });
 
             if (totalPaid === 0) {
-                console.warn('No pending installments found to pay');
+                console.warn('No payments to process');
                 return;
+            }
+
+            // 2. Redistribute difference if any
+            if (redistributionPool !== 0) {
+                const nextPendingIdx = updatedInstallments.findIndex(inst => inst.status === 'Pending');
+                if (nextPendingIdx !== -1) {
+                    updatedInstallments[nextPendingIdx] = {
+                        ...updatedInstallments[nextPendingIdx],
+                        amount: Math.max(0, updatedInstallments[nextPendingIdx].amount + redistributionPool)
+                    };
+                }
             }
 
             // Record payment in history
@@ -419,18 +441,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             const newRemaining = Math.max(0, (sale.remainingBalance || 0) - totalPaid);
 
-            // Clean data before update (Firestore doesn't like undefined)
-            const updateData = JSON.parse(JSON.stringify({
-                installmentPlan: {
-                    ...sale.installmentPlan,
-                    installments: updatedInstallments
-                },
+            // Update sale doc
+            batch.update(saleRef, {
+                'installmentPlan.installments': updatedInstallments,
                 payments: [...(sale.payments || []), newPayment],
                 remainingBalance: newRemaining,
                 status: newRemaining <= 0 ? 'Paid' : 'Pending',
-            }));
-
-            batch.update(saleRef, updateData);
+            });
 
             // Update customer balance
             if (sale.customerId) {
