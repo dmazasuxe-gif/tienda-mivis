@@ -106,51 +106,69 @@ export default function Dashboard() {
 
     const sendWhatsAppReport = () => {
         const phone = settings.whatsapp || '51999509661';
-        const dateStr = new Date().toLocaleDateString();
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
 
-        let message = `📊 *REPORTE DETALLADO - ${dateStr}*\n`;
-        message += `---------------------------\n`;
-        message += `💰 *Ventas Totales:* S/ ${summary.totalSales.toFixed(2)}\n`;
-        message += `📈 *Ganancia:* S/ ${summary.totalProfit.toFixed(2)}\n`;
-        message += `👤 *Por Cobrar:* S/ ${summary.pendingReceivables.toFixed(2)}\n`;
-        message += `---------------------------\n`;
+        const totalOps = Object.values(paymentBreakdown).reduce((a, b) => a + b.count, 0);
+        const avgTicket = totalOps > 0 ? summary.totalSales / totalOps : 0;
+        const profitMargin = summary.totalSales > 0 ? (summary.totalProfit / summary.totalSales) * 100 : 0;
 
-        message += `🚀 *PRODUCTOS VENDIDOS (RECIENTES):*\n`;
-        // Top 15 recent sales matches
+        let message = `🏢 *MIVISSHOPPING - REPORTE EJECUTIVO*\n`;
+        message += `📅 *Fecha:* ${dateStr} | 🕒 *Hora:* ${timeStr}\n`;
+        message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+        message += `💰 *RESUMEN ESTRATÉGICO*\n`;
+        message += `• *Ingresos Brutos:* S/ ${summary.totalSales.toFixed(2)}\n`;
+        message += `• *Utilidad Operativa:* S/ ${summary.totalProfit.toFixed(2)}\n`;
+        message += `• *Margen de Utilidad:* ${profitMargin.toFixed(1)}%\n`;
+        message += `• *Ticket Promedio:* S/ ${avgTicket.toFixed(2)}\n`;
+        message += `• *Volumen Ops:* ${totalOps} transacciones\n\n`;
+
+        message += `🚀 *BITÁCORA DE VENTAS (Últimas 15)*\n`;
         const recentSalesList = [...sales]
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
             .slice(0, 15);
 
-        recentSalesList.forEach(sale => {
-            const date = new Date(sale.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
-            sale.items.forEach(item => {
-                message += `• ${date} | ${item.productName} (${item.quantity})\n`;
+        if (recentSalesList.length === 0) {
+            message += `_No se registran ventas recientes_\n`;
+        } else {
+            recentSalesList.forEach(sale => {
+                const day = new Date(sale.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' });
+                sale.items.forEach(item => {
+                    message += `▫️ ${day} | ${item.productName.toUpperCase()} [x${item.quantity}]\n`;
+                });
             });
-        });
+        }
+        message += `\n`;
 
-        message += `---------------------------\n`;
-        message += `💳 *DESGLOSE POR MÉTODO:*\n`;
-
+        message += `💳 *LIQUIDEZ POR MEDIO DE PAGO*\n`;
         Object.entries(paymentBreakdown)
             .filter(([, data]) => data.total > 0)
             .forEach(([method, data]) => {
-                const methodName = method === 'Cash' ? 'Efectivo' : method;
-                message += `- ${methodName}: S/ ${data.total.toFixed(2)} (${data.count} ops)\n`;
+                const methodName = method === 'Cash' ? 'EFECTIVO' : method.toUpperCase();
+                const share = (data.total / summary.totalSales) * 100;
+                message += `• ${methodName}: S/ ${data.total.toFixed(2)} (${share.toFixed(1)}%)\n`;
             });
+        message += `\n`;
 
-        message += `---------------------------\n`;
-        message += `⚠️ *CLIENTES DEUDORES (Saldos):*\n`;
+        message += `⚠️ *ANÁLISIS DE RIESGO (DEUDORES)*\n`;
         const debtors = [...customers]
             .filter(c => c.balance > 0)
             .sort((a, b) => b.balance - a.balance);
 
+        message += `• *Cartera por Cobrar:* S/ ${summary.pendingReceivables.toFixed(2)}\n`;
         if (debtors.length === 0) {
-            message += `_No hay saldos pendientes_\n`;
+            message += `_Situación: Cartera al día_\n`;
         } else {
-            debtors.forEach(c => {
-                message += `• ${c.name}: *S/ ${c.balance.toFixed(2)}*\n`;
+            message += `_Top 5 Saldos Pendientes:_\n`;
+            debtors.slice(0, 8).forEach(c => {
+                message += `• ${c.name.split(' ')[0]}: S/ ${c.balance.toFixed(2)}\n`;
             });
         }
+
+        message += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
+        message += `*Generado por Mivis Intelligence™*`;
 
         const encodedMessage = encodeURIComponent(message);
         window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');

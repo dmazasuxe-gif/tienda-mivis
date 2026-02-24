@@ -3,8 +3,8 @@
 
 import { useForm } from 'react-hook-form';
 import { Product } from '@/lib/types';
-import { X, Camera, Upload, Trash, Image as ImageIcon, RefreshCw, Loader2 } from 'lucide-react';
-import { useEffect, useState, useCallback } from 'react';
+import { X, Upload, Trash, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { compressImage } from '@/lib/imageUtils';
 
 interface ProductModalProps {
@@ -79,7 +79,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
                     <h2 className="text-xl font-bold text-gray-800">
                         {initialData ? 'Editar Producto' : 'Nuevo Producto'}
                     </h2>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors" title="Cerrar modal">
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
@@ -153,7 +153,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
                             {images.map((img, idx) => (
                                 <div key={idx} className="relative w-20 h-20 bg-gray-100 rounded-lg overflow-hidden group border border-gray-200 shadow-sm">
                                     <img src={img} alt="Product" className="w-full h-full object-cover" />
-                                    <button type="button" onClick={() => handleRemoveImage(idx)} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                                    <button type="button" onClick={() => handleRemoveImage(idx)} className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white" title="Eliminar imagen">
                                         <Trash size={16} />
                                     </button>
                                 </div>
