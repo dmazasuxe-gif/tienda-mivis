@@ -9,10 +9,10 @@ import {
     ShoppingCart, FileText, ArrowUpRight,
     ArrowDownRight, CreditCard, Trash2, X,
     Calendar, User as UserIcon, CheckCircle2, Clock,
-    MessageCircle, LucideIcon
+    LucideIcon
 } from 'lucide-react';
 import Link from 'next/link';
-import { Sale, Product } from '@/lib/types';
+import { Sale } from '@/lib/types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -85,7 +85,7 @@ const QuickAction = ({ icon: Icon, label, onClick, href, color }: QuickActionPro
 };
 
 export default function Dashboard() {
-    const { getFinancialSummary, sales, deleteSale, customers, products, settings } = useData();
+    const { getFinancialSummary, sales, deleteSale, customers, products } = useData();
     const summary = getFinancialSummary();
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -122,80 +122,7 @@ export default function Dashboard() {
 
     const paymentBreakdown = getPaymentBreakdown();
 
-    const sendWhatsAppReport = () => {
-        const phone = settings.whatsapp || '51999509661';
-        const now = new Date();
-        const dateStr = now.toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-        const timeStr = now.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-        let message = `📝 *REPORTE GENERAL - ${dateStr} (${timeStr})*\n`;
-        message += `━━━━━━━━━━━━━━━━━━━━━\n\n`;
-
-        // 1. VENTAS REALIZADAS
-        message += `📝 *HISTORIAL DE VENTAS*\n`;
-        if (sales.length === 0) {
-            message += `_No se registran ventas_\n`;
-        } else {
-            sales.forEach(sale => {
-                const client = sale.clientName || 'G. Pasajero';
-                message += `• ${client} | *S/ ${sale.total.toFixed(2)}*\n`;
-            });
-        }
-        message += `\n`;
-
-        // 2. STOCK POR CATEGORÍA
-        message += `📦 *STOCK DE PRODUCTOS*\n`;
-        const categoryGroups = products.reduce((acc: Record<string, Product[]>, p: Product) => {
-            if (!acc[p.category]) acc[p.category] = [];
-            acc[p.category].push(p);
-            return acc;
-        }, {} as Record<string, Product[]>);
-
-        Object.entries(categoryGroups).forEach(([cat, items]: [string, Product[]]) => {
-            message += `*${cat.toUpperCase()}:*\n`;
-            items.forEach((p: Product) => {
-                const stockStatus = p.stock <= 3 ? '🔴' : '🟢';
-                message += `  ${stockStatus} ${p.name}: ${p.stock} unid.\n`;
-            });
-        });
-        message += `\n`;
-
-        // 3. MONTOS TOTALES POR MÉTODO
-        message += `💳 *TOTALES POR MÉTODO DE PAGO*\n`;
-        const methods = ['Cash', 'Yape', 'Plin', 'Transfer'];
-        methods.forEach(m => {
-            const data = paymentBreakdown[m] || { total: 0, count: 0 };
-            const mName = m === 'Cash' ? 'EFECTIVO' : m.toUpperCase();
-            message += `• ${mName}: *S/ ${data.total.toFixed(2)}*\n`;
-        });
-        message += `\n`;
-
-        // 4. CLIENTES DEUDORES Y CUOTAS
-        message += `📋 *CLIENTES CON CRÉDITO ACTIVO*\n`;
-        const debtors = customers.filter(c => c.balance > 0);
-        if (debtors.length === 0) {
-            message += `_Sin deudas pendientes_\n`;
-        } else {
-            debtors.forEach(c => {
-                message += `👤 *${c.name}: S/ ${c.balance.toFixed(2)}*\n`;
-                // Find pending installments
-                const pendingSales = sales.filter(s => s.customerId === c.id && s.type === 'Credit' && s.status === 'Pending');
-                pendingSales.forEach(sale => {
-                    const pendingInsts = sale.installmentPlan?.installments.filter(inst => inst.status === 'Pending') || [];
-                    pendingInsts.forEach(inst => {
-                        const dueDate = new Date(inst.dueDate).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' });
-                        message += `  - Cuota ${inst.number}: S/ ${inst.amount.toFixed(2)} (vence ${dueDate})\n`;
-                    });
-                });
-            });
-        }
-
-        message += `\n━━━━━━━━━━━━━━━━━━━━━\n`;
-        message += `*Reporte Generado por MivisShopping*`;
-
-        const encodedMessage = encodeURIComponent(message);
-        window.open(`https://wa.me/${phone}?text=${encodedMessage}`, '_blank');
-    };
 
     const handleDeleteSale = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -299,12 +226,7 @@ export default function Dashboard() {
                         onClick={generatePdfReport}
                         color="red"
                     />
-                    <QuickAction
-                        icon={MessageCircle}
-                        label="WhatsApp"
-                        onClick={sendWhatsAppReport}
-                        color="green"
-                    />
+
                 </div>
             </div>
 
