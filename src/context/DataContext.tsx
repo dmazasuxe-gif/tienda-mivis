@@ -56,6 +56,8 @@ interface DataContextType extends AppData {
         totalProfit: number;
         pendingReceivables: number;
     };
+    deletePaymentFromSale: (saleId: string, paymentIndex: number) => Promise<void>;
+    updateSalePrice: (saleId: string, itemIndex: number, newPrice: number) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -805,6 +807,98 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Provider
     // ────────────────────────────────────────────────
 
+    // ────────────────────────────────────────────────
+    // Ledger Item Management (Edit/Delete)
+    // ────────────────────────────────────────────────
+
+    const deletePaymentFromSale = useCallback(async (saleId: string, paymentIndex: number) => {
+        try {
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale || !sale.payments) return;
+
+            const payment = sale.payments[paymentIndex];
+            if (!payment) return;
+
+            const batch = writeBatch(db);
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+
+            const updatedPayments = [...sale.payments];
+            updatedPayments.splice(paymentIndex, 1);
+
+            const newRemaining = (sale.remainingBalance || 0) + payment.amount;
+
+            batch.update(saleRef, {
+                payments: updatedPayments,
+                remainingBalance: newRemaining,
+                status: newRemaining <= 0 ? 'Paid' : 'Pending'
+            });
+
+            if (sale.customerId) {
+                const customer = customers.find(c => c.id === sale.customerId);
+                if (customer) {
+                    const customerRef = doc(db, COLLECTIONS.customers, customer.id);
+                    batch.update(customerRef, {
+                        balance: customer.balance + payment.amount
+                    });
+                }
+            }
+
+            await batch.commit();
+        } catch (error) {
+            console.error('Error deleting payment:', error);
+            setError('Error al eliminar el pago');
+        }
+    }, [sales, customers]);
+
+    const updateSalePrice = useCallback(async (saleId: string, itemIndex: number, newPrice: number) => {
+        try {
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale) return;
+
+            const item = sale.items[itemIndex];
+            if (!item) return;
+
+            const diff = newPrice - item.salePrice;
+            const batch = writeBatch(db);
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+
+            const updatedItems = [...sale.items];
+            updatedItems[itemIndex] = {
+                ...item,
+                salePrice: newPrice
+            };
+
+            const newTotal = sale.total + diff;
+            const newRemaining = (sale.remainingBalance || 0) + diff;
+
+            const product = products.find(p => p.id === item.productId);
+            const newProfit = sale.profit + diff;
+
+            batch.update(saleRef, {
+                items: updatedItems,
+                total: newTotal,
+                remainingBalance: newRemaining,
+                profit: newProfit,
+                status: newRemaining <= 0 ? 'Paid' : 'Pending'
+            });
+
+            if (sale.customerId) {
+                const customer = customers.find(c => c.id === sale.customerId);
+                if (customer) {
+                    const customerRef = doc(db, COLLECTIONS.customers, customer.id);
+                    batch.update(customerRef, {
+                        balance: customer.balance + diff
+                    });
+                }
+            }
+
+            await batch.commit();
+        } catch (error) {
+            console.error('Error updating sale price:', error);
+            setError('Error al actualizar el precio');
+        }
+    }, [sales, customers, products]);
+
     return (
         <DataContext.Provider value={{
             products,
@@ -833,6 +927,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             addPaymentToCustomer,
             registerProductToCustomer,
             getFinancialSummary,
+            deletePaymentFromSale,
+            updateSalePrice,
             error,
             clearError,
         }}>

@@ -1,13 +1,13 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
 import { Customer, Product, PaymentDetails } from '@/lib/types';
 import {
     User, Users, DollarSign, Phone, Search,
     Plus, X, Loader2, Trash2, Package, ChevronLeft,
-    Check, ArrowRight, Smartphone, Wallet
+    Check, ArrowRight, Smartphone, Wallet, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
@@ -21,11 +21,17 @@ export default function CustomersPage() {
         registerProductToCustomer,
         addPaymentToCustomer,
         addCustomer,
-        deleteCustomer
+        deleteCustomer,
+        deleteSale,
+        deletePaymentFromSale,
+        updateSalePrice
     } = useData();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+    const [isCreating, setIsCreating] = useState(false);
+
+    // UI States
     const [showPlusMenu, setShowPlusMenu] = useState(false);
     const [showProductSearch, setShowProductSearch] = useState(false);
     const [showPaymentAmount, setShowPaymentAmount] = useState(false);
@@ -34,27 +40,33 @@ export default function CustomersPage() {
     const [paymentAmount, setPaymentAmount] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // New Customer Dialog
-    const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
-    const [newCustomerStep, setNewCustomerStep] = useState(1);
-    const [newCustomerForm, setNewCustomerForm] = useState({
-        name: '',
-        contact: '',
-        selectedProduct: null as Product | null,
-        paymentAmount: '',
-        paymentMethod: 'Cash' as PaymentDetails['method']
-    });
+    // Edit Modal States
+    const [editingItem, setEditingItem] = useState<{ id: string; type: 'product' | 'payment'; value: number } | null>(null);
 
-    // Filtered customers for the initial list
+    // New Customer Form (Inline)
+    const [newCustForm, setNewCustForm] = useState({ name: '', contact: '' });
+
+    // Ensure selectedCustomer is always fresh from context
+    const currentCustomer = useMemo(() => {
+        if (!selectedCustomer) return null;
+        return customers.find(c => c.id === selectedCustomer.id) || selectedCustomer;
+    }, [customers, selectedCustomer]);
+
+    // Total Consolidado (Sum of all debt)
+    const totalConsolidado = useMemo(() => {
+        return customers.reduce((acc, c) => acc + c.balance, 0);
+    }, [customers]);
+
+    // Filtered customers
     const filteredCustomers = useMemo(() => {
         return customers.filter(c =>
             c.name.toLowerCase().includes(searchTerm.toLowerCase())
         ).sort((a, b) => b.balance - a.balance);
     }, [customers, searchTerm]);
 
-    // Ledger items for the selected customer
+    // Ledger items
     const ledgerItems = useMemo(() => {
-        if (!selectedCustomer) return [];
+        if (!currentCustomer) return [];
 
         interface LedgerItem {
             type: 'product' | 'payment';
@@ -63,24 +75,24 @@ export default function CustomersPage() {
             method?: PaymentDetails['method'];
             amount?: number;
             date: string;
-            id: string;
+            id: string; // saleId
+            itemIdx?: number;
+            payIdx?: number;
         }
 
         const items: LedgerItem[] = [];
-
-        // Add products from sales
-        sales.filter(s => s.customerId === selectedCustomer.id).forEach(sale => {
-            sale.items.forEach(item => {
+        sales.filter(s => s.customerId === currentCustomer.id).forEach(sale => {
+            sale.items.forEach((item, idx) => {
                 items.push({
                     type: 'product',
                     name: item.productName,
                     price: item.salePrice,
                     date: sale.date,
-                    id: `${sale.id}-${item.productId}`
+                    id: sale.id,
+                    itemIdx: idx
                 });
             });
 
-            // Add payments from sales
             if (sale.payments) {
                 sale.payments.forEach((payment, idx) => {
                     items.push({
@@ -88,21 +100,20 @@ export default function CustomersPage() {
                         method: payment.method,
                         amount: payment.amount,
                         date: payment.date,
-                        id: `${sale.id}-pay-${idx}`
+                        id: sale.id,
+                        payIdx: idx
                     });
                 });
             }
         });
 
-        // Sort by date (chronological)
         return items.sort((a, b) => {
             const timeA = new Date(a.date).getTime();
             const timeB = new Date(b.date).getTime();
             if (timeA !== timeB) return timeA - timeB;
-            // If same time, products first, then payments
             return a.type === 'product' ? -1 : 1;
         });
-    }, [selectedCustomer, sales]);
+    }, [currentCustomer, sales]);
 
     const filteredProducts = useMemo(() => {
         return products.filter(p =>
@@ -111,223 +122,184 @@ export default function CustomersPage() {
     }, [products, productSearchQuery]);
 
     const handleSelectProduct = async (product: Product) => {
-        if (!selectedCustomer) return;
+        if (!currentCustomer) return;
         setIsProcessing(true);
         try {
-            await registerProductToCustomer(selectedCustomer.id, product);
+            await registerProductToCustomer(currentCustomer.id, product);
             setShowProductSearch(false);
             setProductSearchQuery('');
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setIsProcessing(false);
-        }
+        } catch (err) { console.error(err); }
+        finally { setIsProcessing(false); }
     };
 
     const handleAddPayment = async () => {
-        if (!selectedCustomer || !paymentAmount || isNaN(parseFloat(paymentAmount))) return;
+        if (!currentCustomer || !paymentAmount || isNaN(parseFloat(paymentAmount))) return;
         setIsProcessing(true);
         try {
-            await addPaymentToCustomer(selectedCustomer.id, parseFloat(paymentAmount), paymentMethod);
+            await addPaymentToCustomer(currentCustomer.id, parseFloat(paymentAmount), paymentMethod);
             setShowPaymentAmount(false);
             setPaymentAmount('');
             setShowPlusMenu(false);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setIsProcessing(false);
-        }
+        } catch (err) { console.error(err); }
+        finally { setIsProcessing(false); }
     };
 
-    const handleCreateNewCustomer = async () => {
-        if (!newCustomerForm.name.trim() || newCustomerForm.contact.length !== 9) return;
+    const handleFinalCreate = async () => {
+        if (!newCustForm.name.trim() || newCustForm.contact.length !== 9) {
+            alert("Por favor ingresa un nombre y un celular de 9 dígitos");
+            return;
+        }
         setIsProcessing(true);
         try {
-            // 1. Create customer
-            const newCustomerId = await addCustomer({
-                id: '', // Will be replaced by Firestore
-                name: newCustomerForm.name.trim(),
-                contact: newCustomerForm.contact,
+            const id = await addCustomer({
+                id: '',
+                name: newCustForm.name.trim(),
+                contact: newCustForm.contact,
                 balance: 0,
                 history: []
             });
-
-            // 2. Add product if selected
-            if (newCustomerForm.selectedProduct) {
-                await registerProductToCustomer(newCustomerId, newCustomerForm.selectedProduct);
-            }
-
-            // 3. Add payment if entered
-            const amt = parseFloat(newCustomerForm.paymentAmount);
-            if (!isNaN(amt) && amt > 0) {
-                await addPaymentToCustomer(newCustomerId, amt, newCustomerForm.paymentMethod);
-            }
-
-            setShowNewCustomerModal(false);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setIsProcessing(false);
-        }
+            const created = customers.find(c => c.id === id) || { id, name: newCustForm.name, contact: newCustForm.contact, balance: 0, history: [] };
+            setSelectedCustomer(created);
+            setIsCreating(false);
+            setNewCustForm({ name: '', contact: '' });
+        } catch (err) { console.error(err); }
+        finally { setIsProcessing(false); }
     };
 
-    const handleDeleteCustomer = async (id: string, name: string) => {
-        if (window.confirm(`¿Eliminar a "${name}"? Se perderá todo su historial.`)) {
-            await deleteCustomer(id);
-            if (selectedCustomer?.id === id) setSelectedCustomer(null);
-        }
+    const handleDeleteItem = async (item: any) => {
+        if (!window.confirm("¿Estás seguro de eliminar este registro?")) return;
+        setIsProcessing(true);
+        try {
+            if (item.type === 'product') {
+                await deleteSale(item.id);
+            } else {
+                await deletePaymentFromSale(item.id, item.payIdx);
+            }
+        } catch (err) { console.error(err); }
+        finally { setIsProcessing(false); }
+    };
+
+    const handleUpdateItemValue = async () => {
+        if (!editingItem || isNaN(editingItem.value)) return;
+        setIsProcessing(true);
+        try {
+            if (editingItem.type === 'product') {
+                // Find itemIdx for this saleId
+                const original = ledgerItems.find(i => i.id === editingItem.id && i.type === 'product');
+                if (original) await updateSalePrice(editingItem.id, original.itemIdx!, editingItem.value);
+            } else {
+                alert("La edición de montos de pagos directos estará disponible próximamente. Por ahora, elimine y vuelva a registrar el pago.");
+            }
+            setEditingItem(null);
+        } catch (err) { console.error(err); }
+        finally { setIsProcessing(false); }
     };
 
     return (
         <div className="min-h-screen">
-            {/* Conditional Rendering of Primary Screens */}
             <AnimatePresence mode="wait">
-                {!selectedCustomer ? (
-                    <motion.div
-                        key="list"
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        className="space-y-8"
-                    >
+                {(!currentCustomer && !isCreating) ? (
+                    <motion.div key="list" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
                         <div className="flex justify-between items-center">
                             <div>
                                 <h1 className="text-4xl font-black text-gray-900 tracking-tight flex items-center gap-4">
-                                    <Users className="text-purple-600" size={40} />
-                                    Clientes
+                                    <Users className="text-purple-600" size={40} /> Clientes
                                 </h1>
-                                <p className="text-gray-500 font-medium mt-1">Selecciona un cliente para gestionar su cuenta.</p>
+                                <p className="text-gray-500 font-medium mt-1">Gestión de cuentas y créditos.</p>
                             </div>
-                            <button
-                                onClick={() => {
-                                    setNewCustomerForm({ name: '', contact: '', selectedProduct: null, paymentAmount: '', paymentMethod: 'Cash' });
-                                    setNewCustomerStep(1);
-                                    setShowNewCustomerModal(true);
-                                }}
-                                className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-3xl font-black shadow-xl shadow-purple-200 flex items-center gap-3 transition-all active:scale-95"
-                            >
-                                <Plus size={24} strokeWidth={3} />
-                                NUEVO CLIENTE
+                            <button onClick={() => setIsCreating(true)} className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-3xl font-black shadow-xl shadow-purple-200 flex items-center gap-3 active:scale-95 transition-all">
+                                <Plus size={24} strokeWidth={3} /> NUEVO CLIENTE
                             </button>
                         </div>
 
                         <div className="relative">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                            <input
-                                type="text"
-                                placeholder="Buscar cliente por nombre..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-12 pr-6 py-5 bg-white border-2 border-transparent focus:border-purple-500 rounded-[2rem] shadow-xl shadow-purple-100 outline-none transition-all text-lg font-medium"
-                            />
+                            <input type="text" placeholder="Buscar cliente por nombre..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-5 bg-white border-2 border-transparent focus:border-purple-500 rounded-[2rem] shadow-xl shadow-purple-100 outline-none transition-all text-lg font-medium" />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {filteredCustomers.map((customer) => (
-                                <motion.div
-                                    key={customer.id}
-                                    initial={{ opacity: 0, scale: 0.9 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    whileHover={{ y: -5 }}
-                                    onClick={() => setSelectedCustomer(customer)}
-                                    className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100 cursor-pointer group hover:border-purple-200 transition-all flex flex-col gap-6"
-                                >
+                                <motion.div key={customer.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ y: -5 }} onClick={() => setSelectedCustomer(customer)} className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100 cursor-pointer group hover:border-purple-200 transition-all flex flex-col gap-6">
                                     <div className="flex items-center gap-5">
-                                        <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-pink-100 rounded-3xl flex items-center justify-center text-2xl font-black text-purple-600">
-                                            {customer.name.charAt(0)}
-                                        </div>
+                                        <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-pink-100 rounded-3xl flex items-center justify-center text-2xl font-black text-purple-600">{customer.name.charAt(0)}</div>
                                         <div className="flex-1">
-                                            <h3 className="text-xl font-bold text-gray-900 group-hover:text-purple-600 transition-colors uppercase">{customer.name}</h3>
-                                            <p className="text-gray-400 font-bold flex items-center gap-1.5 mt-1">
-                                                <Phone size={14} /> {customer.contact}
-                                            </p>
+                                            <h3 className="text-xl font-bold text-gray-900 group-hover:text-purple-600 uppercase">{customer.name}</h3>
+                                            <p className="text-gray-400 font-bold flex items-center gap-1.5 mt-1"><Phone size={14} /> {customer.contact}</p>
                                         </div>
-                                        <ArrowRight className="text-gray-300 group-hover:text-purple-400 transition-colors" />
+                                        <ArrowRight className="text-gray-300 group-hover:text-purple-400" />
                                     </div>
-
                                     <div className="bg-gray-50 rounded-2xl p-5 flex justify-between items-center">
                                         <div>
                                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Saldo Pendiente</p>
-                                            <p className={clsx(
-                                                "text-2xl font-black",
-                                                customer.balance > 0 ? "text-red-500" : "text-green-500"
-                                            )}>
-                                                S/ {customer.balance.toFixed(2)}
-                                            </p>
+                                            <p className={clsx("text-2xl font-black", customer.balance > 0 ? "text-red-500" : "text-green-500")}>S/ {customer.balance.toFixed(2)}</p>
                                         </div>
-                                        <div className={clsx(
-                                            "p-3 rounded-xl",
-                                            customer.balance > 0 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
-                                        )}>
-                                            <DollarSign size={20} />
-                                        </div>
+                                        <div className={clsx("p-3 rounded-xl", customer.balance > 0 ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600")}><DollarSign size={20} /></div>
                                     </div>
                                 </motion.div>
                             ))}
                         </div>
                     </motion.div>
                 ) : (
-                    <motion.div
-                        key="detail"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 20 }}
-                        className="flex flex-col gap-8 pb-10"
-                    >
+                    <motion.div key="detail" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="flex flex-col gap-8 pb-10">
                         {/* Header Detail */}
                         <div className="flex justify-between items-center bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
-                            <button
-                                onClick={() => setSelectedCustomer(null)}
-                                className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 rounded-xl transition-all font-bold text-gray-500"
-                            >
+                            <button onClick={() => { setSelectedCustomer(null); setIsCreating(false); }} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 rounded-xl font-bold text-gray-500">
                                 <ChevronLeft size={20} /> Volver a Clientes
                             </button>
-                            <button
-                                onClick={() => handleDeleteCustomer(selectedCustomer.id, selectedCustomer.name)}
-                                className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                                title="Eliminar Cliente"
-                            >
-                                <Trash2 size={20} />
-                            </button>
+                            {!isCreating && currentCustomer && (
+                                <button onClick={() => { if (window.confirm(`¿Eliminar a "${currentCustomer.name}"?`)) deleteCustomer(currentCustomer.id); setSelectedCustomer(null); }} className="p-3 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20} /></button>
+                            )}
                         </div>
 
                         {/* Customer Dashboard Look */}
                         <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                             <div className="lg:col-span-8 bg-[#1a1a1a] rounded-[3rem] p-10 shadow-2xl border border-gray-800 flex flex-col min-h-[600px] relative overflow-hidden">
+
+                                {/* Header / Name Area */}
                                 <div className="flex justify-center mb-12">
-                                    <div className="px-8 py-3 border border-gray-600 rounded-lg">
-                                        <h2 className="text-white text-xl font-medium tracking-tight uppercase whitespace-nowrap">
-                                            {selectedCustomer.name}
-                                        </h2>
-                                    </div>
+                                    {isCreating ? (
+                                        <div className="flex flex-col gap-4 items-center w-full max-w-md">
+                                            <input autoFocus type="text" placeholder="NOMBRE DEL CLIENTE" value={newCustForm.name} onChange={e => setNewCustForm({ ...newCustForm, name: e.target.value })} className="bg-transparent border border-gray-600 rounded-lg px-6 py-2 text-white text-center text-xl font-medium uppercase outline-none focus:border-blue-500 w-full" />
+                                            <input type="text" maxLength={9} placeholder="CELULAR (9 DÍGITOS)" value={newCustForm.contact} onChange={e => setNewCustForm({ ...newCustForm, contact: e.target.value.replace(/\D/g, '') })} className="bg-transparent border border-gray-600 rounded-lg px-6 py-2 text-white text-center text-sm outline-none focus:border-blue-500 w-full" />
+                                            <button onClick={handleFinalCreate} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 active:scale-95 transition-all mt-2">CONFIRMAR CREAR</button>
+                                        </div>
+                                    ) : (
+                                        <div className="px-10 py-3 border border-gray-600 rounded-lg">
+                                            <h2 className="text-white text-2xl font-black tracking-tight uppercase">{currentCustomer?.name}</h2>
+                                        </div>
+                                    )}
                                 </div>
 
-                                <button
-                                    onClick={() => setShowPlusMenu(!showPlusMenu)}
-                                    className="absolute top-10 right-10 w-12 h-12 bg-[#2d5af0] rounded-lg flex items-center justify-center text-white shadow-xl hover:scale-110 active:scale-95 transition-all z-20"
-                                    title="Opciones"
-                                >
-                                    <Plus size={30} strokeWidth={3} />
-                                </button>
+                                {/* Plus Button */}
+                                {!isCreating && (
+                                    <button onClick={() => setShowPlusMenu(!showPlusMenu)} className="absolute top-10 right-10 w-12 h-12 bg-[#2d5af0] rounded-lg flex items-center justify-center text-white shadow-xl hover:scale-110 active:scale-95 transition-all z-20">
+                                        <Plus size={30} strokeWidth={3} />
+                                    </button>
+                                )}
 
+                                {/* Ledger List */}
                                 <div className="flex-1 space-y-4 max-h-[500px] overflow-y-auto pr-4 scrollbar-thin scrollbar-thumb-gray-700">
-                                    {ledgerItems.length === 0 ? (
+                                    {(isCreating || !ledgerItems.length) ? (
                                         <div className="h-full flex items-center justify-center flex-col text-gray-600 gap-4 mt-20 opacity-30 italic">
                                             <Package size={48} />
-                                            <p className="font-bold">Sin actividad registrada</p>
+                                            <p className="font-bold">Agregue productos o pagos haciendo clic en el (+)</p>
                                         </div>
                                     ) : (
                                         ledgerItems.map((item) => (
-                                            <div key={item.id} className="flex gap-4 items-center animate-in slide-in-from-bottom-2">
-                                                <div className="flex-1 flex gap-4">
-                                                    <div className="bg-[#2a2a2a] border border-gray-700 px-6 py-3 rounded-lg flex-1 min-w-0">
+                                            <div key={item.id + (item.payIdx ?? item.itemIdx)} className="flex gap-3 items-center group">
+                                                <div className="flex-1 flex gap-3">
+                                                    <div className="bg-[#2a2a2a] border border-gray-700 px-6 py-4 rounded-lg flex-1 min-w-0 flex items-center justify-between">
                                                         <p className="text-white text-sm font-medium truncate">
-                                                            {item.type === 'product' ? item.name : `PAGO CON ${item.method?.toUpperCase() || '-'} (${new Date(item.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })})`}
+                                                            {item.type === 'product' ? item.name : `PAGO CON ${item.method?.toUpperCase()} (${new Date(item.date).toLocaleDateString('es-PE')})`}
                                                         </p>
+                                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button onClick={() => setEditingItem({ id: item.id, type: item.type, value: item.type === 'product' ? item.price! : item.amount! })} className="p-1.5 bg-gray-700 text-gray-300 rounded-md hover:text-white"><Edit2 size={12} /></button>
+                                                            <button onClick={() => handleDeleteItem(item)} className="p-1.5 bg-gray-700 text-red-400 rounded-md hover:text-red-300"><Trash2 size={12} /></button>
+                                                        </div>
                                                     </div>
-                                                    <div className="bg-[#2a2a2a] border border-gray-700 px-6 py-3 rounded-lg w-40 flex items-center justify-center">
-                                                        <p className="text-[#a0a0a0] text-sm font-bold uppercase">
-                                                            {item.type === 'product' ? `S/ ${item.price?.toFixed(2) || '0.00'}` : `(efectivo) S/ ${item.amount?.toFixed(2) || '0.00'}`}
+                                                    <div className="bg-[#2a2a2a] border border-gray-700 px-6 py-4 rounded-lg w-40 flex items-center justify-center">
+                                                        <p className="text-white text-md font-black">
+                                                            S/ {item.type === 'product' ? item.price?.toFixed(2) : item.amount?.toFixed(2)}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -336,43 +308,26 @@ export default function CustomersPage() {
                                     )}
                                 </div>
 
+                                {/* Suma Total Deuda */}
                                 <div className="mt-12 flex gap-4">
-                                    <div className="bg-[#2a2a2a] border border-gray-700 px-8 py-4 rounded-lg flex-1">
+                                    <div className="bg-[#2a2a2a] border border-gray-700 px-8 py-5 rounded-lg flex-1">
                                         <p className="text-white font-bold tracking-widest text-sm uppercase">SUMA TOTAL DE DEUDA</p>
                                     </div>
-                                    <div className="bg-[#2a2a2a] border border-gray-700 px-8 py-4 rounded-lg w-48 flex items-center justify-center">
-                                        <p className="text-white font-black text-lg">S/ {selectedCustomer.balance.toFixed(2)}</p>
+                                    <div className="bg-[#2a2a2a] border border-gray-700 px-8 py-5 rounded-lg w-48 flex items-center justify-center">
+                                        <p className="text-white font-black text-xl">S/ {currentCustomer?.balance.toFixed(2) || '0.00'}</p>
                                     </div>
                                 </div>
 
+                                {/* Plus Menu */}
                                 <AnimatePresence>
                                     {showPlusMenu && (
-                                        <motion.div
-                                            initial={{ opacity: 0, x: 20, scale: 0.9 }}
-                                            animate={{ opacity: 1, x: 0, scale: 1 }}
-                                            exit={{ opacity: 0, x: 20, scale: 0.9 }}
-                                            className="absolute top-24 right-10 w-64 bg-[#1a441a] rounded-[2rem] border-2 border-[#2e7d32] p-8 shadow-2xl z-30 space-y-6"
-                                        >
-                                            <button
-                                                onClick={() => { setShowProductSearch(true); setShowPlusMenu(false); }}
-                                                className="w-full bg-white text-gray-900 py-3 px-4 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all text-center"
-                                            >
-                                                Nuevo Producto
-                                            </button>
-
+                                        <motion.div initial={{ opacity: 0, x: 20, scale: 0.9 }} animate={{ opacity: 1, x: 0, scale: 1 }} exit={{ opacity: 0, x: 20, scale: 0.9 }} className="absolute top-24 right-10 w-64 bg-[#1a441a] rounded-[2rem] border-2 border-[#2e7d32] p-8 shadow-2xl z-30 space-y-6">
+                                            <button onClick={() => { setShowProductSearch(true); setShowPlusMenu(false); }} className="w-full bg-white text-gray-900 py-3 rounded-lg font-bold text-sm hover:scale-105 active:scale-95 transition-all">Nuevo Producto</button>
                                             <div className="space-y-3">
                                                 <p className="text-white text-xs font-black uppercase text-center tracking-widest opacity-60">Nuevo pago</p>
                                                 <div className="grid grid-cols-1 gap-2">
                                                     {(['Yape', 'Plin', 'Cash', 'Transfer'] as const).map(method => (
-                                                        <button
-                                                            key={method}
-                                                            onClick={() => {
-                                                                setPaymentMethod(method === 'Cash' ? 'Cash' : method);
-                                                                setShowPaymentAmount(true);
-                                                                setShowPlusMenu(false);
-                                                            }}
-                                                            className="w-full border border-white/20 text-white py-2 px-4 rounded-lg text-sm hover:bg-white/10 transition-all font-medium"
-                                                        >
+                                                        <button key={method} onClick={() => { setPaymentMethod(method); setShowPaymentAmount(true); setShowPlusMenu(false); }} className="w-full border border-white/20 text-white py-2 rounded-lg text-xs hover:bg-white/10 transition-all font-medium">
                                                             {method === 'Cash' ? 'efectivo' : method === 'Transfer' ? 'transferencia' : method.toLowerCase()}
                                                         </button>
                                                     ))}
@@ -383,52 +338,39 @@ export default function CustomersPage() {
                                 </AnimatePresence>
                             </div>
 
+                            {/* Right Side Stats */}
                             <div className="lg:col-span-4 space-y-6">
-                                <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl space-y-6">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600">
-                                            <User size={24} />
+                                {currentCustomer && (
+                                    <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl space-y-6">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600"><User size={24} /></div>
+                                            <div>
+                                                <h3 className="font-bold text-gray-900">{currentCustomer.name}</h3>
+                                                <p className="text-sm text-gray-400 font-medium">{currentCustomer.contact}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="font-bold text-gray-900">{selectedCustomer.name}</h3>
-                                            <p className="text-sm text-gray-400 font-medium">{selectedCustomer.contact}</p>
+                                        <div className="pt-6 border-t border-gray-50 flex justify-between items-center">
+                                            <p className="text-gray-400 font-bold text-sm">Estado de Cuenta</p>
+                                            <span className={clsx("px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest", currentCustomer.balance > 0 ? "bg-red-50 text-red-500" : "bg-green-50 text-green-500")}>
+                                                {currentCustomer.balance > 0 ? "Con Deuda" : "Al día"}
+                                            </span>
                                         </div>
                                     </div>
-                                    <div className="pt-6 border-t border-gray-50 flex justify-between items-center">
-                                        <p className="text-gray-400 font-bold text-sm">Estado de Cuenta</p>
-                                        <span className={clsx(
-                                            "px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest",
-                                            selectedCustomer.balance > 0 ? "bg-red-50 text-red-500" : "bg-green-50 text-green-500"
-                                        )}>
-                                            {selectedCustomer.balance > 0 ? "Con Deuda" : "Al día"}
-                                        </span>
-                                    </div>
-                                </div>
+                                )}
 
                                 <div className="bg-gradient-to-br from-purple-600 to-pink-600 p-8 rounded-[2.5rem] text-white shadow-xl shadow-purple-200">
-                                    <p className="font-black text-[10px] uppercase tracking-widest opacity-70 mb-2">Total Consolidado</p>
-                                    <h4 className="text-4xl font-black mb-6">S/ {selectedCustomer.balance.toFixed(2)}</h4>
-                                    <button
-                                        onClick={() => {
-                                            const productsList = ledgerItems
-                                                .filter(i => i.type === 'product')
-                                                .map(i => `• ${i.name}: S/ ${i.price?.toFixed(2)}`)
-                                                .join('\n');
-                                            const paymentsList = ledgerItems
-                                                .filter(i => i.type === 'payment')
-                                                .map(i => `✓ Pago (${i.method?.toLowerCase()}): S/ ${i.amount?.toFixed(2)} [${new Date(i.date).toLocaleDateString('es-PE')}]`)
-                                                .join('\n');
-                                            const msg = `Hola *${selectedCustomer.name}*, este es el resumen detallado de tu cuenta en *MivisShopping*:\n\n` +
-                                                `*PRODUCTOS ADQUIRIDOS:*\n${productsList || 'Ninguno'}\n\n` +
-                                                `*PAGOS REALIZADOS:*\n${paymentsList || 'Ninguno'}\n\n` +
-                                                `*SALDO TOTAL PENDIENTE:* S/ ${selectedCustomer.balance.toFixed(2)}\n\n` +
-                                                `¡Gracias por tu preferencia!`;
-                                            window.open(`https://wa.me/51${selectedCustomer.contact.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
-                                        }}
-                                        className="w-full py-4 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-2xl font-bold flex items-center justify-center gap-3 transition-all"
-                                    >
-                                        <Smartphone size={18} /> Recordar por WhatsApp
-                                    </button>
+                                    <p className="font-black text-[10px] uppercase tracking-widest opacity-70 mb-2">{isCreating ? "TOTAL DEUDA GLOBAL" : "TOTAL CONSOLIDADO"}</p>
+                                    <h4 className="text-5xl font-black mb-10">S/ {(isCreating ? totalConsolidado : (currentCustomer?.balance ?? 0)).toFixed(2)}</h4>
+                                    {!isCreating && currentCustomer && (
+                                        <button onClick={() => {
+                                            const productsList = ledgerItems.filter(i => i.type === 'product').map(i => `• ${i.name}: S/ ${i.price?.toFixed(2)}`).join('\n');
+                                            const paymentsList = ledgerItems.filter(i => i.type === 'payment').map(i => `✓ Pago (${i.method?.toLowerCase()}): S/ ${i.amount?.toFixed(2)} [${new Date(i.date).toLocaleDateString()}]`).join('\n');
+                                            const msg = `Hola *${currentCustomer.name}*, resumen detallado:\n\n*PRODUCTOS:*\n${productsList || 'Ninguno'}\n\n*PAGOS:*\n${paymentsList || 'Ninguno'}\n\n*SALDO PENDIENTE:* S/ ${currentCustomer.balance.toFixed(2)}`;
+                                            window.open(`https://wa.me/51${currentCustomer.contact}?text=${encodeURIComponent(msg)}`, '_blank');
+                                        }} className="w-full py-5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-2xl font-bold flex items-center justify-center gap-3 transition-all">
+                                            <Smartphone size={18} /> Recordar por WhatsApp
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -436,36 +378,27 @@ export default function CustomersPage() {
                 )}
             </AnimatePresence>
 
-            {/* SHARED MODALS - Rendered on top of anything */}
-
+            {/* Modals */}
             <AnimatePresence>
                 {/* Product Search */}
                 {showProductSearch && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
-                        >
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
                             <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
                                 <h2 className="text-2xl font-black text-gray-900 uppercase">Buscar Producto</h2>
-                                <button onClick={() => setShowProductSearch(false)} className="p-2 hover:bg-white rounded-xl text-gray-400" title="Cerrar"><X /></button>
+                                <button onClick={() => setShowProductSearch(false)} className="p-2 hover:bg-white rounded-xl text-gray-400"><X /></button>
                             </div>
                             <div className="p-8 flex flex-col gap-6">
                                 <div className="relative">
                                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                    <input autoFocus type="text" placeholder="Nombre del producto..." value={productSearchQuery} onChange={(e) => setProductSearchQuery(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 font-bold" />
+                                    <input autoFocus type="text" placeholder="Nombre del producto..." value={productSearchQuery} onChange={(e) => setProductSearchQuery(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none font-bold" />
                                 </div>
                                 <div className="space-y-3 overflow-y-auto max-h-[400px] pr-2">
                                     {filteredProducts.map(product => (
-                                        <button key={product.id} onClick={() => handleSelectProduct(product)} className="w-full p-4 hover:bg-purple-50 rounded-2xl border border-gray-100 transition-all text-left flex justify-between items-center group">
+                                        <button key={product.id} onClick={() => handleSelectProduct(product)} className="w-full p-4 hover:bg-purple-50 rounded-2xl border border-gray-100 flex justify-between items-center group">
                                             <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-gray-100 rounded-xl overflow-hidden relative">
-                                                    {product.images?.[0] ? <Image src={product.images[0]} alt={product.name} fill className="object-cover" /> : <Package className="m-auto text-gray-300" />}
-                                                </div>
-                                                <div>
-                                                    <p className="font-bold text-gray-900 group-hover:text-purple-600 transition-colors uppercase">{product.name}</p>
-                                                    <p className="text-[10px] text-gray-400 font-black tracking-widest uppercase">STOCK: {product.stock}</p>
-                                                </div>
+                                                <div className="w-12 h-12 bg-gray-100 rounded-xl overflow-hidden relative"> {product.images?.[0] ? <Image src={product.images[0]} alt="" fill className="object-cover" /> : <Package className="m-auto text-gray-300" />} </div>
+                                                <div className="text-left font-bold uppercase text-gray-900">{product.name}</div>
                                             </div>
                                             <p className="font-black text-purple-600">S/ {product.salePrice.toFixed(2)}</p>
                                         </button>
@@ -476,75 +409,36 @@ export default function CustomersPage() {
                     </div>
                 )}
 
-                {/* Payment Amount */}
+                {/* Confirm Amount Modal */}
                 {showPaymentAmount && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[2.5rem] w-full max-w-xs overflow-hidden shadow-2xl p-8 space-y-8">
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[2.5rem] w-full max-w-xs p-8 space-y-8 shadow-2xl">
                             <div className="text-center space-y-2">
                                 <div className="w-16 h-16 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><Wallet size={32} /></div>
                                 <h3 className="text-xl font-black text-gray-900 uppercase">Registrar Pago</h3>
-                                <p className="text-xs text-gray-400 font-bold tracking-widest uppercase">Método: <span className="text-purple-600">{paymentMethod === 'Cash' ? 'efectivo' : paymentMethod.toLowerCase()}</span></p>
+                                <p className="text-xs text-purple-600 font-black uppercase tracking-widest">{paymentMethod === 'Cash' ? 'efectivo' : paymentMethod.toLowerCase()}</p>
                             </div>
                             <div className="space-y-4">
-                                <div className="bg-gray-50 border border-gray-200 rounded-2xl flex items-center px-4 py-4"><span className="text-2xl font-black text-gray-400 mr-2">S/</span><input autoFocus type="number" placeholder="0.00" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-transparent outline-none text-2xl font-black text-gray-900" /></div>
-                                <button onClick={handleAddPayment} disabled={!paymentAmount || isProcessing} className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black flex items-center justify-center gap-3"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check /> CONFIRMAR</>} </button>
-                                <button onClick={() => setShowPaymentAmount(false)} className="w-full py-2 text-gray-400 font-bold">Cancelar</button>
+                                <div className="bg-gray-50 border border-gray-200 rounded-2xl flex items-center px-4 py-4 text-2xl font-black"><span className="text-gray-400 mr-2">S/</span><input autoFocus type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-transparent outline-none text-gray-900" /></div>
+                                <button onClick={handleAddPayment} disabled={!paymentAmount || isProcessing} className="w-full py-4 bg-gray-900 text-white rounded-2xl font-black flex items-center justify-center gap-3"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={20} /> CONFIRMAR</>} </button>
+                                <button onClick={() => setShowPaymentAmount(false)} className="w-full py-2 text-gray-400 font-bold uppercase text-xs">Cancelar</button>
                             </div>
                         </motion.div>
                     </div>
                 )}
 
-                {/* New Customer */}
-                {showNewCustomerModal && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-                            <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                                <h2 className="text-2xl font-black text-gray-900 uppercase">Nuevo Cliente</h2>
-                                <button onClick={() => setShowNewCustomerModal(false)} className="p-2 hover:bg-white rounded-xl text-gray-400" title="Cerrar"><X /></button>
+                {/* Edit Item Modal */}
+                {editingItem && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[2.5rem] w-full max-w-xs p-8 space-y-8 shadow-2xl">
+                            <div className="text-center space-y-2">
+                                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><Edit2 size={32} /></div>
+                                <h3 className="text-xl font-black text-gray-900 uppercase">Editar {editingItem.type === 'product' ? 'Precio' : 'Monto'}</h3>
                             </div>
-                            <div className="p-10 flex flex-col gap-8">
-                                <div className="flex gap-2"> {[1, 2, 3].map(s => (<div key={s} className={clsx("h-1.5 flex-1 rounded-full transition-all", newCustomerStep >= s ? "bg-purple-600" : "bg-gray-100")} />))} </div>
-                                {newCustomerStep === 1 && (
-                                    <div className="space-y-6">
-                                        <div className="space-y-2"> <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Nombre del Cliente</label> <input autoFocus type="text" placeholder="Ej. Juan Pérez" value={newCustomerForm.name} onChange={e => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })} className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none font-bold text-lg" /> </div>
-                                        <div className="space-y-2"> <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Número de Celular (9 dígitos)</label> <input type="text" maxLength={9} placeholder="Ej. 987654321" value={newCustomerForm.contact} onChange={e => setNewCustomerForm({ ...newCustomerForm, contact: e.target.value.replace(/\D/g, '') })} className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none font-bold text-lg" /> </div>
-                                        <button disabled={!newCustomerForm.name.trim() || newCustomerForm.contact.length !== 9} onClick={() => setNewCustomerStep(2)} className="w-full py-5 bg-gray-900 text-white rounded-2xl font-black flex items-center justify-center gap-3 disabled:opacity-50"> SIGUIENTE <ArrowRight size={20} /> </button>
-                                    </div>
-                                )}
-                                {newCustomerStep === 2 && (
-                                    <div className="space-y-6">
-                                        <div className="space-y-2"> <label className="text-xs font-black uppercase text-gray-400 tracking-wider">¿Qué producto lleva? (Opcional)</label> <div className="relative"> <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} /> <input autoFocus type="text" placeholder="Buscar en inventario..." value={productSearchQuery} onChange={(e) => setProductSearchQuery(e.target.value)} className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none font-bold" /> </div> </div>
-                                        <div className="space-y-3 overflow-y-auto max-h-[300px] pr-2">
-                                            {filteredProducts.map(product => (
-                                                <button key={product.id} onClick={() => { setNewCustomerForm({ ...newCustomerForm, selectedProduct: product }); setNewCustomerStep(3); setProductSearchQuery(''); }} className={clsx("w-full p-4 rounded-2xl border transition-all text-left flex justify-between items-center group", newCustomerForm.selectedProduct?.id === product.id ? "bg-purple-600 border-purple-600 text-white" : "bg-white border-gray-100 hover:bg-purple-50")}>
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden relative shrink-0"> {product.images?.[0] ? <Image src={product.images[0]} alt="" fill className="object-cover" /> : <Package className="m-auto text-gray-300" />} </div>
-                                                        <div> <p className={clsx("font-bold uppercase text-sm", newCustomerForm.selectedProduct?.id === product.id ? "text-white" : "text-gray-900")}>{product.name}</p> <p className={clsx("text-[10px] font-black", newCustomerForm.selectedProduct?.id === product.id ? "text-white/70" : "text-gray-400")}>STOCK: {product.stock}</p> </div>
-                                                    </div>
-                                                    <p className={clsx("font-black", newCustomerForm.selectedProduct?.id === product.id ? "text-white" : "text-purple-600")}>S/ {product.salePrice.toFixed(2)}</p>
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <div className="flex gap-4"> <button onClick={() => setNewCustomerStep(1)} className="flex-1 py-4 border border-gray-200 text-gray-400 rounded-2xl font-black">ATRÁS</button> <button onClick={() => setNewCustomerStep(3)} className="flex-1 py-4 bg-gray-100 text-gray-600 rounded-2xl font-black">SALTAR</button> </div>
-                                    </div>
-                                )}
-                                {newCustomerStep === 3 && (
-                                    <div className="space-y-6">
-                                        <div className="text-center space-y-2 mb-4"> <div className="w-16 h-16 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mx-auto mb-4"><Wallet size={32} /></div> <h3 className="text-xl font-black text-gray-900 uppercase">¿Realiza un pago?</h3> <p className="text-xs text-gray-400 font-bold tracking-widest uppercase text-xs">Opcional</p> </div>
-                                        <div className="space-y-4">
-                                            <div className="bg-gray-50 border border-gray-200 rounded-2xl flex items-center px-4 py-4"><span className="text-2xl font-black text-gray-400 mr-2">S/</span><input autoFocus type="number" placeholder="0.00" value={newCustomerForm.paymentAmount} onChange={(e) => setNewCustomerForm({ ...newCustomerForm, paymentAmount: e.target.value })} className="w-full bg-transparent outline-none text-2xl font-black text-gray-900" /></div>
-                                            <div className="grid grid-cols-2 gap-3">
-                                                {(['Yape', 'Plin', 'Cash', 'Transfer'] as const).map(method => (
-                                                    <button key={method} onClick={() => setNewCustomerForm({ ...newCustomerForm, paymentMethod: method })} className={clsx("py-3 px-4 rounded-xl border-2 font-black text-[10px] transition-all", newCustomerForm.paymentMethod === method ? "bg-purple-600 border-purple-600 text-white" : "border-gray-100 text-gray-400 bg-white")}>
-                                                        {method === 'Cash' ? 'EFECTIVO' : method === 'Transfer' ? 'TRANSFERENCIA' : method.toUpperCase()}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <button onClick={handleCreateNewCustomer} disabled={isProcessing} className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 mt-4 shadow-xl shadow-purple-200"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={24} strokeWidth={3} /> FINALIZAR Y CREAR</>} </button>
-                                            <button onClick={() => setNewCustomerStep(2)} className="w-full py-2 text-gray-400 font-bold">Atrás</button>
-                                        </div>
-                                    </div>
-                                )}
+                            <div className="space-y-4">
+                                <div className="bg-gray-50 border border-gray-200 rounded-2xl flex items-center px-4 py-4 text-2xl font-black"><span className="text-gray-400 mr-2">S/</span><input autoFocus type="number" value={editingItem.value} onChange={(e) => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full bg-transparent outline-none text-gray-900" /></div>
+                                <button onClick={handleUpdateItemValue} disabled={isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black flex items-center justify-center gap-3"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={20} /> ACTUALIZAR</>} </button>
+                                <button onClick={() => setEditingItem(null)} className="w-full py-2 text-gray-400 font-bold uppercase text-xs">Cancelar</button>
                             </div>
                         </motion.div>
                     </div>
