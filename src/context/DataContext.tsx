@@ -48,6 +48,8 @@ interface DataContextType extends AppData {
     resetSales: () => Promise<void>;
     updateSettings: (settings: AppData['settings']) => Promise<void>;
     updateInstallmentDate: (saleId: string, installmentNumber: number, newDate: string) => Promise<void>;
+    addPaymentToCustomer: (customerId: string, amount: number, method: PaymentDetails['method']) => Promise<void>;
+    registerProductToCustomer: (customerId: string, product: Product) => Promise<void>;
     getFinancialSummary: () => {
         inventoryValue: number;
         totalSales: number;
@@ -597,6 +599,122 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [sales]);
 
+    const addPaymentToCustomer = useCallback(async (customerId: string, amount: number, method: PaymentDetails['method']) => {
+        try {
+            console.log('Adding general payment to customer...', { customerId, amount, method });
+            const customer = customers.find(c => c.id === customerId);
+            if (!customer) throw new Error('Cliente no encontrado');
+
+            const pendingSales = sales
+                .filter(s => s.customerId === customerId && s.type === 'Credit' && (s.remainingBalance || 0) > 0)
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            const batch = writeBatch(db);
+            let remainingToApply = amount;
+
+            for (const sale of pendingSales) {
+                if (remainingToApply <= 0) break;
+
+                const saleRef = doc(db, COLLECTIONS.sales, sale.id);
+                const canPayThisSale = Math.min(remainingToApply, sale.remainingBalance || 0);
+
+                const newPayment: PaymentDetails = {
+                    method,
+                    amount: canPayThisSale,
+                    date: new Date().toISOString(),
+                };
+
+                const newRemaining = (sale.remainingBalance || 0) - canPayThisSale;
+
+                // If it has installment plan, update it too
+                let updatedInstallments = sale.installmentPlan?.installments;
+                if (updatedInstallments) {
+                    let installmentPayPool = canPayThisSale;
+                    updatedInstallments = updatedInstallments.map(inst => {
+                        if (inst.status === 'Pending' && installmentPayPool > 0) {
+                            const payAmount = Math.min(installmentPayPool, inst.amount);
+                            installmentPayPool -= payAmount;
+                            return {
+                                ...inst,
+                                amount: payAmount, // This is tricky, usually we'd want to keep original amount but status Paid
+                                // But if it's partial, we keep Pending? 
+                                // For simplicity if it covers full installment, mark Paid.
+                                status: payAmount >= inst.amount ? 'Paid' : 'Pending'
+                            };
+                        }
+                        return inst;
+                    });
+                }
+
+                batch.update(saleRef, {
+                    payments: [...(sale.payments || []), newPayment],
+                    remainingBalance: newRemaining,
+                    status: newRemaining <= 0 ? 'Paid' : 'Pending',
+                    ...(updatedInstallments && { 'installmentPlan.installments': updatedInstallments })
+                });
+
+                remainingToApply -= canPayThisSale;
+            }
+
+            // Update customer balance
+            const customerRef = doc(db, COLLECTIONS.customers, customerId);
+            batch.update(customerRef, {
+                balance: Math.max(0, customer.balance - amount)
+            });
+
+            await batch.commit();
+            console.log('General payment applied successfully');
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error adding general payment:', err);
+            setError(`Error al registrar pago: ${err.message}`);
+            throw err;
+        }
+    }, [sales, customers]);
+
+    const registerProductToCustomer = useCallback(async (customerId: string, product: Product) => {
+        try {
+            const customer = customers.find(c => c.id === customerId);
+            if (!customer) throw new Error('Cliente no encontrado');
+
+            const saleData: Omit<Sale, 'id'> = {
+                items: [{
+                    productId: product.id,
+                    productName: product.name,
+                    quantity: 1,
+                    salePrice: product.salePrice
+                }],
+                total: product.salePrice,
+                costTotal: product.costPrice,
+                profit: product.salePrice - product.costPrice,
+                type: 'Credit',
+                customerId,
+                clientName: customer.name,
+                date: new Date().toISOString(),
+                status: 'Pending',
+                remainingBalance: product.salePrice,
+                installmentPlan: {
+                    numberOfInstallments: 1,
+                    paymentFrequency: 'Monthly',
+                    installments: [{
+                        number: 1,
+                        amount: product.salePrice,
+                        dueDate: new Date().toISOString(),
+                        status: 'Pending'
+                    }]
+                }
+            };
+
+            await processSale(saleData);
+            console.log('Product registered to customer successfully');
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error registering product to customer:', err);
+            setError(`Error al registrar producto: ${err.message}`);
+            throw err;
+        }
+    }, [customers, processSale]);
+
     // ────────────────────────────────────────────────
     // Financial Summary
     // ────────────────────────────────────────────────
@@ -712,6 +830,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             resetSales,
             updateSettings,
             updateInstallmentDate,
+            addPaymentToCustomer,
+            registerProductToCustomer,
             getFinancialSummary,
             error,
             clearError,

@@ -13,7 +13,6 @@ import { useUI } from '@/context/UIContext';
 const menuItems = [
     { name: 'Menu principal', href: '/admin', icon: LayoutDashboard },
     { name: 'Inventario', href: '/admin/inventory', icon: ShoppingBag },
-    { name: 'Punto de Venta', href: '/admin/sales', icon: CreditCard },
     { name: 'Clientes y Créditos', href: '/admin/customers', icon: Users },
     { name: 'Configuración', href: '/admin/settings', icon: Settings },
 ];
