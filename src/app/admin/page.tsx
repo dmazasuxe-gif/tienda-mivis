@@ -230,14 +230,28 @@ export default function Dashboard() {
             doc.setFontSize(14);
             doc.text('HISTORIAL DETALLADO DE TRANSACCIONES', 10, 20);
 
-            const tableRows = sales.map(sale => [
-                new Date(sale.date).toLocaleDateString('es-PE'),
-                sale.id.substring(0, 6).toUpperCase(),
-                sale.items.map(i => `${i.productName} (x${i.quantity})`).join(', '),
-                sale.type === 'Cash' ? 'CONTADO' : 'CRÉDITO',
-                `S/ ${sale.total.toFixed(2)}`,
-                sale.remainingBalance && sale.remainingBalance > 0 ? `S/ ${sale.remainingBalance.toFixed(2)}` : 'PAGADO'
-            ]);
+            const tableRows = sales.map(sale => {
+                const customer = customers.find(c => c.id === sale.customerId);
+                const customerName = customer ? customer.name.toUpperCase() : 'CLIENTE GENERAL';
+
+                let tipoStatus = '';
+                if (sale.type === 'Cash') {
+                    tipoStatus = 'CONTADO (EFECTIVO)';
+                } else {
+                    tipoStatus = sale.remainingBalance && sale.remainingBalance > 0
+                        ? 'CRÉDITO / PAGANDO DE A POCOS'
+                        : 'CRÉDITO / FINALIZADO';
+                }
+
+                return [
+                    new Date(sale.date).toLocaleDateString('es-PE'),
+                    sale.id.substring(0, 6).toUpperCase(),
+                    `${customerName}\n${sale.items.map(i => `• ${i.productName} (x${i.quantity})`).join('\n')}`,
+                    tipoStatus,
+                    `S/ ${sale.total.toFixed(2)}`,
+                    sale.remainingBalance && sale.remainingBalance > 0 ? `S/ ${sale.remainingBalance.toFixed(2)}` : 'S/ 0.00 (PAGADO)'
+                ];
+            });
 
             autoTable(doc, {
                 startY: 25,
