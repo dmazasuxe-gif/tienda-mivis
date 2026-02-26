@@ -20,6 +20,7 @@ export default function CustomersPage() {
         sales,
         registerProductToCustomer,
         addPaymentToCustomer,
+        addCustomer,
         deleteCustomer
     } = useData();
 
@@ -32,6 +33,17 @@ export default function CustomersPage() {
     const [productSearchQuery, setProductSearchQuery] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+
+    // New Customer Dialog
+    const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
+    const [newCustomerStep, setNewCustomerStep] = useState(1);
+    const [newCustomerForm, setNewCustomerForm] = useState({
+        name: '',
+        contact: '',
+        selectedProduct: null as Product | null,
+        paymentAmount: '',
+        paymentMethod: 'Cash' as PaymentDetails['method']
+    });
 
     // Filtered customers for the initial list
     const filteredCustomers = useMemo(() => {
@@ -82,14 +94,20 @@ export default function CustomersPage() {
             }
         });
 
-        // Sort by date (descending to show latest at top? No, image looks like a chronological list)
-        return items.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        // Sort by date (chronological)
+        return items.sort((a, b) => {
+            const timeA = new Date(a.date).getTime();
+            const timeB = new Date(b.date).getTime();
+            if (timeA !== timeB) return timeA - timeB;
+            // If same time, products first, then payments
+            return a.type === 'product' ? -1 : 1;
+        });
     }, [selectedCustomer, sales]);
 
     const filteredProducts = useMemo(() => {
         return products.filter(p =>
             p.name.toLowerCase().includes(productSearchQuery.toLowerCase()) && p.active && p.stock > 0
-        ).slice(0, 10);
+        );
     }, [products, productSearchQuery]);
 
     const handleSelectProduct = async (product: Product) => {
@@ -121,6 +139,39 @@ export default function CustomersPage() {
         }
     };
 
+    const handleCreateNewCustomer = async () => {
+        if (!newCustomerForm.name || !newCustomerForm.contact) return;
+        setIsProcessing(true);
+        try {
+            // 1. Create customer
+            const newCustomerId = await addCustomer({
+                id: '', // Will be replaced by Firestore
+                name: newCustomerForm.name,
+                contact: newCustomerForm.contact,
+                balance: 0,
+                history: []
+            });
+
+            // 2. Add product if selected
+            if (newCustomerForm.selectedProduct) {
+                await registerProductToCustomer(newCustomerId, newCustomerForm.selectedProduct);
+            }
+
+            // 3. Add payment if entered
+            const amt = parseFloat(newCustomerForm.paymentAmount);
+            if (!isNaN(amt) && amt > 0) {
+                await addPaymentToCustomer(newCustomerId, amt, newCustomerForm.paymentMethod);
+            }
+
+            setShowNewCustomerModal(false);
+            // Select will be handled by effectively clicking the new customer in the list or automatically if we find it
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleDeleteCustomer = async (id: string, name: string) => {
         if (window.confirm(`¿Eliminar a "${name}"? Se perderá todo su historial.`)) {
             await deleteCustomer(id);
@@ -139,6 +190,17 @@ export default function CustomersPage() {
                         </h1>
                         <p className="text-gray-500 font-medium mt-1">Selecciona un cliente para gestionar su cuenta.</p>
                     </div>
+                    <button
+                        onClick={() => {
+                            setNewCustomerForm({ name: '', contact: '', selectedProduct: null, paymentAmount: '', paymentMethod: 'Cash' });
+                            setNewCustomerStep(1);
+                            setShowNewCustomerModal(true);
+                        }}
+                        className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-3xl font-black shadow-xl shadow-purple-200 flex items-center gap-3 transition-all active:scale-95"
+                    >
+                        <Plus size={24} strokeWidth={3} />
+                        NUEVO CLIENTE
+                    </button>
                 </div>
 
                 <div className="relative">
@@ -256,7 +318,7 @@ export default function CustomersPage() {
                                     <div className="flex-1 flex gap-4">
                                         <div className="bg-[#2a2a2a] border border-gray-700 px-6 py-3 rounded-lg flex-1 min-w-0">
                                             <p className="text-white text-sm font-medium truncate">
-                                                {item.type === 'product' ? item.name : `PAGO CON ${item.method?.toUpperCase() || '-'} (${new Date(item.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' })})`}
+                                                {item.type === 'product' ? item.name : `PAGO CON ${item.method?.toUpperCase() || '-'} (${new Date(item.date).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' })})`}
                                             </p>
                                         </div>
                                         <div className="bg-[#2a2a2a] border border-gray-700 px-6 py-3 rounded-lg w-40 flex items-center justify-center">
@@ -468,6 +530,188 @@ export default function CustomersPage() {
                                 >
                                     Cancelar
                                 </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* New Customer Modal (Multi-step) */}
+            <AnimatePresence>
+                {showNewCustomerModal && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-[2.5rem] w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+                        >
+                            <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                                <h2 className="text-2xl font-black text-gray-900 uppercase">Nuevo Cliente</h2>
+                                <button onClick={() => setShowNewCustomerModal(false)} className="p-2 hover:bg-white rounded-xl text-gray-400" title="Cerrar"><X /></button>
+                            </div>
+
+                            <div className="p-10 flex flex-col gap-8">
+                                {/* Step Indicator */}
+                                <div className="flex gap-2">
+                                    {[1, 2, 3].map(s => (
+                                        <div key={s} className={clsx(
+                                            "h-1.5 flex-1 rounded-full transition-all",
+                                            newCustomerStep >= s ? "bg-purple-600" : "bg-gray-100"
+                                        )} />
+                                    ))}
+                                </div>
+
+                                {newCustomerStep === 1 && (
+                                    <div className="space-y-6 animate-in slide-in-from-right-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Nombre del Cliente</label>
+                                            <input
+                                                autoFocus
+                                                type="text"
+                                                placeholder="Ej. Juan Pérez"
+                                                value={newCustomerForm.name}
+                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, name: e.target.value })}
+                                                className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-lg"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Número de Celular</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Ej. 987654321"
+                                                value={newCustomerForm.contact}
+                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, contact: e.target.value })}
+                                                className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-lg"
+                                            />
+                                        </div>
+                                        <button
+                                            disabled={!newCustomerForm.name || !newCustomerForm.contact}
+                                            onClick={() => setNewCustomerStep(2)}
+                                            className="w-full py-5 bg-gray-900 text-white rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-black active:scale-95 transition-all disabled:opacity-50"
+                                        >
+                                            SIGUIENTE <ArrowRight size={20} />
+                                        </button>
+                                    </div>
+                                )}
+
+                                {newCustomerStep === 2 && (
+                                    <div className="space-y-6 animate-in slide-in-from-right-4">
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-black uppercase text-gray-400 tracking-wider">¿Qué producto lleva? (Opcional)</label>
+                                            <div className="relative">
+                                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                                <input
+                                                    autoFocus
+                                                    type="text"
+                                                    placeholder="Buscar en inventario..."
+                                                    value={productSearchQuery}
+                                                    onChange={(e) => setProductSearchQuery(e.target.value)}
+                                                    className="w-full pl-12 pr-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 font-bold"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3 overflow-y-auto max-h-[300px] pr-2">
+                                            {filteredProducts.map(product => (
+                                                <button
+                                                    key={product.id}
+                                                    onClick={() => {
+                                                        setNewCustomerForm({ ...newCustomerForm, selectedProduct: product });
+                                                        setNewCustomerStep(3);
+                                                        setProductSearchQuery('');
+                                                    }}
+                                                    className={clsx(
+                                                        "w-full p-4 rounded-2xl border transition-all text-left flex justify-between items-center group",
+                                                        newCustomerForm.selectedProduct?.id === product.id ? "bg-purple-600 border-purple-600 text-white" : "bg-white border-gray-100 hover:bg-purple-50"
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-10 h-10 bg-gray-100 rounded-lg overflow-hidden relative shrink-0">
+                                                            {product.images?.[0] ? <Image src={product.images[0]} alt="" fill className="object-cover" /> : <Package className="m-auto text-gray-300" />}
+                                                        </div>
+                                                        <div>
+                                                            <p className={clsx("font-bold uppercase text-sm", newCustomerForm.selectedProduct?.id === product.id ? "text-white" : "text-gray-900")}>{product.name}</p>
+                                                            <p className={clsx("text-[10px] font-black", newCustomerForm.selectedProduct?.id === product.id ? "text-white/70" : "text-gray-400")}>STOCK: {product.stock}</p>
+                                                        </div>
+                                                    </div>
+                                                    <p className={clsx("font-black", newCustomerForm.selectedProduct?.id === product.id ? "text-white" : "text-purple-600")}>S/ {product.salePrice.toFixed(2)}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div className="flex gap-4">
+                                            <button
+                                                onClick={() => setNewCustomerStep(1)}
+                                                className="flex-1 py-4 border border-gray-200 text-gray-400 rounded-2xl font-black hover:bg-gray-50 transition-all font-bold"
+                                            >
+                                                ATRÁS
+                                            </button>
+                                            <button
+                                                onClick={() => setNewCustomerStep(3)}
+                                                className="flex-1 py-4 bg-gray-100 text-gray-600 rounded-2xl font-black hover:bg-gray-200 transition-all font-bold"
+                                            >
+                                                SALTAR
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {newCustomerStep === 3 && (
+                                    <div className="space-y-6 animate-in slide-in-from-right-4">
+                                        <div className="text-center space-y-2 mb-4">
+                                            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
+                                                <Wallet size={32} />
+                                            </div>
+                                            <h3 className="text-xl font-black text-gray-900 uppercase">¿Realiza un pago?</h3>
+                                            <p className="text-xs text-gray-400 font-bold tracking-widest uppercase">Opcional</p>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            <div className="bg-gray-50 border border-gray-200 rounded-2xl flex items-center px-4 py-4 focus-within:ring-2 focus-within:ring-purple-500 transition-all">
+                                                <span className="text-2xl font-black text-gray-400 mr-2">S/</span>
+                                                <input
+                                                    autoFocus
+                                                    type="number"
+                                                    placeholder="0.00"
+                                                    value={newCustomerForm.paymentAmount}
+                                                    onChange={(e) => setNewCustomerForm({ ...newCustomerForm, paymentAmount: e.target.value })}
+                                                    className="w-full bg-transparent outline-none text-2xl font-black text-gray-900"
+                                                />
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {(['Yape', 'Plin', 'Cash', 'Transfer'] as const).map(method => (
+                                                    <button
+                                                        key={method}
+                                                        onClick={() => setNewCustomerForm({ ...newCustomerForm, paymentMethod: method })}
+                                                        className={clsx(
+                                                            "py-3 px-4 rounded-xl border-2 font-black text-xs transition-all",
+                                                            newCustomerForm.paymentMethod === method ? "bg-purple-600 border-purple-600 text-white" : "border-gray-100 text-gray-400 bg-white"
+                                                        )}
+                                                    >
+                                                        {method === 'Cash' ? 'EFECTIVO' : method.toUpperCase()}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            <button
+                                                onClick={handleCreateNewCustomer}
+                                                disabled={isProcessing}
+                                                className="w-full py-5 bg-purple-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-purple-700 active:scale-95 transition-all mt-4 shadow-xl shadow-purple-200"
+                                            >
+                                                {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={24} strokeWidth={3} /> FINALIZAR Y CREAR</>}
+                                            </button>
+
+                                            <button
+                                                onClick={() => setNewCustomerStep(2)}
+                                                className="w-full py-2 text-gray-400 font-bold hover:text-gray-600 transition-colors"
+                                            >
+                                                Atrás
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </div>
