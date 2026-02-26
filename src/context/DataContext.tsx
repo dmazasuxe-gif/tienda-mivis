@@ -58,7 +58,8 @@ interface DataContextType extends AppData {
     };
     deletePaymentFromSale: (saleId: string, paymentIndex: number) => Promise<void>;
     updateSaleItemDetail: (saleId: string, itemIdx: number, updates: { productName?: string, salePrice?: number, discount?: number }) => Promise<void>;
-    updatePaymentDetail: (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number }) => Promise<void>;
+    updatePaymentDetail: (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number, date?: string }) => Promise<void>;
+    clearSalesData: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -910,7 +911,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [sales, customers]);
 
-    const updatePaymentDetail = useCallback(async (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number }) => {
+    const updatePaymentDetail = useCallback(async (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number, date?: string }) => {
         try {
             const sale = sales.find(s => s.id === saleId);
             if (!sale || !sale.payments) return;
@@ -922,14 +923,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const saleRef = doc(db, COLLECTIONS.sales, saleId);
 
             const updatedPayments = [...sale.payments];
-            const oldAmount = payment.amount;
+            const oldAmount = updatedPayments[payIdx].amount;
             const newAmount = updates.amount !== undefined ? updates.amount : oldAmount;
-            const newMethod = updates.method !== undefined ? updates.method : payment.method;
 
             updatedPayments[payIdx] = {
-                ...payment,
+                ...updatedPayments[payIdx],
+                method: updates.method !== undefined ? updates.method : updatedPayments[payIdx].method,
                 amount: newAmount,
-                method: newMethod
+                date: updates.date !== undefined ? updates.date : updatedPayments[payIdx].date
             };
 
             const diff = newAmount - oldAmount;
@@ -957,6 +958,31 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setError('Error al actualizar el pago');
         }
     }, [sales, customers]);
+
+    const clearSalesData = useCallback(async () => {
+        try {
+            const batch = writeBatch(db);
+            sales.forEach(s => {
+                batch.delete(doc(db, COLLECTIONS.sales, s.id));
+            });
+
+            // Also reset product soldCounts if they exist
+            products.forEach(p => {
+                batch.update(doc(db, COLLECTIONS.products, p.id), { soldCount: 0 });
+            });
+
+            // Reset customer balances? Usually better to keep them if they represent reality, 
+            // but if we clear sales, balances should logically be zero if all debt comes from sales.
+            customers.forEach(c => {
+                batch.update(doc(db, COLLECTIONS.customers, c.id), { balance: 0, history: [] });
+            });
+
+            await batch.commit();
+        } catch (error) {
+            console.error('Error clearing sales data:', error);
+            setError('Error al limpiar los datos');
+        }
+    }, [sales, products, customers]);
 
     return (
         <DataContext.Provider value={{
@@ -989,6 +1015,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             deletePaymentFromSale,
             updateSaleItemDetail,
             updatePaymentDetail,
+            clearSalesData,
             error,
             clearError,
         }}>

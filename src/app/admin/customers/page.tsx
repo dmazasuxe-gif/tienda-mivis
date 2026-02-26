@@ -49,6 +49,7 @@ export default function CustomersPage() {
         value: number;
         discount?: number;
         method?: PaymentDetails['method'];
+        date?: string;
         itemIdx?: number;
         payIdx?: number;
     } | null>(null);
@@ -213,7 +214,8 @@ export default function CustomersPage() {
             } else {
                 await updatePaymentDetail(editingItem.id, editingItem.payIdx!, {
                     method: editingItem.method,
-                    amount: editingItem.value
+                    amount: editingItem.value,
+                    date: editingItem.date
                 });
             }
             setEditingItem(null);
@@ -361,6 +363,7 @@ export default function CustomersPage() {
                                                                     value: item.type === 'product' ? item.price! : item.amount!,
                                                                     discount: item.discount,
                                                                     method: item.method,
+                                                                    date: item.date,
                                                                     itemIdx: item.itemIdx,
                                                                     payIdx: item.payIdx
                                                                 })}
@@ -554,6 +557,19 @@ export default function CustomersPage() {
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Monto Pagado S/</label>
                                             <input type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-lg outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Fecha del Pago</label>
+                                            <input
+                                                type="date"
+                                                value={editingItem.date ? new Date(editingItem.date).toISOString().split('T')[0] : ''}
+                                                onChange={e => {
+                                                    const date = new Date(e.target.value);
+                                                    // Ensure we keep the local date correctly
+                                                    setEditingItem({ ...editingItem, date: date.toISOString() });
+                                                }}
+                                                className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600"
+                                            />
                                         </div>
                                     </>
                                 )}

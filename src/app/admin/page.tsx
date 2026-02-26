@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     DollarSign, Package, Users, Activity,
     ShoppingCart, FileText, ArrowUpRight,
-    ArrowDownRight, CreditCard, Trash2, X,
+    ArrowDownRight, Trash2, X,
     Calendar, User as UserIcon, CheckCircle2, Clock,
     LucideIcon
 } from 'lucide-react';
@@ -85,12 +85,17 @@ const QuickAction = ({ icon: Icon, label, onClick, href, color }: QuickActionPro
 };
 
 export default function Dashboard() {
-    const { getFinancialSummary, sales, deleteSale, customers, products } = useData();
+    const { getFinancialSummary, sales, customers, products } = useData();
     const summary = getFinancialSummary();
     const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
     const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+    const { clearSalesData } = useData();
 
-    const recentSales = sales.slice(0, 6);
+    const handleClearData = async () => {
+        if (window.confirm('⚠️ ATENCIÓN: ¿Estás seguro de eliminar TODO el historial de ventas y reinicializar los balances? Esta acción no se puede deshacer.')) {
+            await clearSalesData();
+        }
+    };
 
     const getPaymentBreakdown = () => {
         const methods = ['Cash', 'Yape', 'Plin', 'Card', 'Transfer', 'Other'];
@@ -124,82 +129,139 @@ export default function Dashboard() {
 
 
 
-    const handleDeleteSale = async (e: React.MouseEvent, id: string) => {
-        e.stopPropagation();
-        if (window.confirm('¿Estás seguro de eliminar esta venta? El stock y balances serán revertidos.')) {
-            await deleteSale(id);
-        }
-    };
 
     const generatePdfReport = () => {
         setIsGeneratingPdf(true);
         try {
             const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
 
-            // Header
-            doc.setFillColor(139, 92, 246); // Purple-600
-            doc.rect(0, 0, 210, 40, 'F');
+            // --- HEADER ---
+            doc.setFillColor(139, 92, 246); // Static Purple
+            doc.rect(0, 0, pageWidth, 50, 'F');
+
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(22);
-            doc.text('MIVISSHOPPING - REPORTE DE VENTAS', 15, 25);
-            doc.setFontSize(10);
-            doc.text(`Fecha del reporte: ${new Date().toLocaleString()}`, 15, 33);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(28);
+            doc.text('MIVISSHOPPING', 15, 25);
 
-            // Summary boxes
-            doc.setFillColor(243, 244, 246);
-            doc.roundedRect(15, 45, 180, 35, 3, 3, 'F');
-            doc.setTextColor(50, 50, 50);
             doc.setFontSize(10);
-            doc.text(`Valor Stock: S/ ${summary.inventoryValue.toFixed(2)}`, 25, 55);
-            doc.text(`Total Ventas: S/ ${summary.totalSales.toFixed(2)}`, 25, 62);
-            doc.text(`Ganancia Neta: S/ ${summary.totalProfit.toFixed(2)}`, 120, 55);
-            doc.text(`Por Cobrar: S/ ${summary.pendingReceivables.toFixed(2)}`, 120, 62);
-            doc.text(`Cobrado Total (Efectivo/Yape/etc): S/ ${Object.values(paymentBreakdown).reduce((acc, current) => acc + current.total, 0).toFixed(2)}`, 25, 69);
+            doc.setFont('helvetica', 'normal');
+            doc.text('DISTRIBUCIÓN Y VENTA AL POR MAYOR Y MENOR', 15, 33);
+            doc.text(`REPORTE GENERAL DE GESTIÓN | ${new Date().toLocaleDateString('es-PE')} ${new Date().toLocaleTimeString('es-PE')}`, 15, 38);
 
-            // Payment Breakdown Table in PDF
+            // --- SUMMARY CARDS ---
+            doc.setFillColor(249, 250, 251);
+            doc.roundedRect(10, 55, pageWidth - 20, 45, 5, 5, 'F');
+
+            doc.setTextColor(100, 116, 139);
+            doc.setFontSize(8);
+            doc.text('RESUMEN FINANCIERO CONSOLIDADO', 15, 62);
+
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+
+            doc.text('VALOR DE INVENTARIO:', 15, 75);
+            doc.text(`S/ ${summary.inventoryValue.toFixed(2)}`, 60, 75);
+
+            doc.text('TOTAL DE VENTAS:', 15, 82);
+            doc.text(`S/ ${summary.totalSales.toFixed(2)}`, 60, 82);
+
+            doc.text('GANANCIA NETA ESTIMADA:', 110, 75);
+            doc.setTextColor(22, 163, 74);
+            doc.text(`S/ ${summary.totalProfit.toFixed(2)}`, 160, 75);
+
+            doc.setTextColor(30, 41, 59);
+            doc.text('CUENTAS POR COBRAR:', 110, 82);
+            doc.setTextColor(220, 38, 38);
+            doc.text(`S/ ${summary.pendingReceivables.toFixed(2)}`, 160, 82);
+
+            // --- PAYMENTS BREAKDOWN ---
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(12);
+            doc.text('INGRESOS POR MÉTODO DE PAGO', 10, 110);
+
             const breakdownRows = Object.entries(paymentBreakdown)
                 .filter(([, data]) => data.total > 0)
                 .map(([method, data]) => [
-                    method === 'Cash' ? 'efectivo' : method === 'Transfer' ? 'transferencia' : method.toLowerCase(),
+                    method === 'Cash' ? 'EFECTIVO' : method.toUpperCase(),
                     data.count.toString(),
                     `S/ ${data.total.toFixed(2)}`
                 ]);
 
             autoTable(doc, {
-                startY: 85,
-                head: [['Método de Pago', 'N° Operaciones', 'Monto Total']],
+                startY: 115,
+                head: [['MÉTODO DE PAGO', 'OPERACIONES', 'MONTO TOTAL COBRADO']],
                 body: breakdownRows,
-                headStyles: { fillColor: [139, 92, 246] },
-                margin: { left: 15, right: 15 },
+                theme: 'grid',
+                headStyles: { fillColor: [139, 92, 246], halign: 'center' },
+                columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' } },
+                styles: { fontSize: 9 }
             });
 
-            // Table Data
-            const tableRows = sales.flatMap(sale =>
-                sale.items.map(item => [
-                    new Date(sale.date).toLocaleDateString(),
-                    item.productName,
-                    item.quantity.toString(),
-                    `S/ ${(item.salePrice || 0).toFixed(2)}`,
-                    `S/ ${(item.quantity * (item.salePrice || 0)).toFixed(2)}`,
-                    sale.type === 'Cash' ? 'Efectivo' : 'Crédito',
-                    sale.status === 'Paid' ? 'Pagado' : 'Pendiente'
-                ])
-            );
+            // --- BEST SELLING PRODUCTS ---
+            const topProducts = [...products]
+                .map(p => ({
+                    name: p.name,
+                    soldCount: sales.reduce((acc, s) => acc + s.items.filter(i => i.productId === p.id).reduce((sum, item) => sum + item.quantity, 0), 0)
+                }))
+                .sort((a, b) => b.soldCount - a.soldCount)
+                .slice(0, 10)
+                .map((p, i) => [(i + 1).toString(), p.name, p.soldCount.toString()]);
+
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+            const nextY = (doc as any).lastAutoTable.finalY + 15;
+            doc.text('RANKING DE PRODUCTOS (TOP 10)', 10, nextY);
 
             autoTable(doc, {
-                /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-                startY: (doc as any).lastAutoTable.finalY + 15,
-                head: [['Fecha', 'Producto', 'Cant.', 'Precio Unit.', 'Subtotal', 'Tipo', 'Estado']],
-                body: tableRows,
-                headStyles: { fillColor: [139, 92, 246] },
-                alternateRowStyles: { fillColor: [249, 250, 251] },
-                margin: { top: 80 },
+                startY: nextY + 5,
+                head: [['#', 'PRODUCTO', 'UNIDADES VENDIDAS']],
+                body: topProducts,
+                theme: 'striped',
+                headStyles: { fillColor: [59, 130, 246] },
+                columnStyles: { 0: { cellWidth: 10 }, 2: { halign: 'center' } },
+                styles: { fontSize: 9 }
             });
 
-            doc.save(`Reporte_Ventas_${new Date().getTime()}.pdf`);
+            // --- FULL TRANSACTION LOG (New Page) ---
+            doc.addPage();
+            doc.setTextColor(30, 41, 59);
+            doc.setFontSize(14);
+            doc.text('HISTORIAL DETALLADO DE TRANSACCIONES', 10, 20);
+
+            const tableRows = sales.map(sale => [
+                new Date(sale.date).toLocaleDateString('es-PE'),
+                sale.id.substring(0, 6).toUpperCase(),
+                sale.items.map(i => `${i.productName} (x${i.quantity})`).join(', '),
+                sale.type === 'Cash' ? 'CONTADO' : 'CRÉDITO',
+                `S/ ${sale.total.toFixed(2)}`,
+                sale.remainingBalance && sale.remainingBalance > 0 ? `S/ ${sale.remainingBalance.toFixed(2)}` : 'PAGADO'
+            ]);
+
+            autoTable(doc, {
+                startY: 25,
+                head: [['FECHA', 'TICKET', 'DETALLE PRODUCTOS', 'TIPO', 'TOTAL', 'PENDIENTE']],
+                body: tableRows,
+                theme: 'grid',
+                headStyles: { fillColor: [30, 41, 59] },
+                styles: { fontSize: 8 },
+                columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right', fontStyle: 'bold' } }
+            });
+
+            // Footer
+            const totalPages = (doc as any).internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8);
+                doc.setTextColor(150);
+                doc.text(`Página ${i} de ${totalPages} - Generado por Sistema MivisShopping`, pageWidth / 2, 290, { align: 'center' });
+            }
+
+            doc.save(`Reporte_MivisShopping_${new Date().getTime()}.pdf`);
         } catch (error) {
             console.error('PDF Error:', error);
-            alert('Error al generar el PDF.');
+            alert('Error al generar el PDF detallado.');
         } finally {
             setIsGeneratingPdf(false);
         }
@@ -270,6 +332,12 @@ export default function Dashboard() {
                             <h3 className="text-xl font-black text-gray-900">Rendimiento de Productos</h3>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Más vendidos vs Menos vendidos</p>
                         </div>
+                        <button
+                            onClick={handleClearData}
+                            className="p-3 bg-red-50 text-red-600 rounded-2xl hover:bg-red-100 transition-all shadow-sm border border-red-100 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest"
+                        >
+                            <Trash2 size={16} /> Limpiar Historial
+                        </button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 flex-1">
@@ -389,53 +457,13 @@ export default function Dashboard() {
                                     </tfoot>
                                 </table>
                             </div>
-                            <p className="text-[10px] text-gray-400 italic">Dinero real ingresado (Ventas al contado y abonos).</p>
-                        </div>
-                    </div>
-
-                    {/* Recent Activity Section */}
-                    <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-xl shadow-gray-100/50 flex flex-col">
-                        <div className="flex justify-between items-center mb-8">
-                            <h3 className="text-xl font-black text-gray-900">Últimas Ventas</h3>
-                            <Link href="/admin/sales" className="p-2 bg-purple-50 text-purple-600 rounded-xl hover:bg-purple-100 transition-colors">
-                                <ArrowUpRight size={20} />
-                            </Link>
-                        </div>
-
-                        <div className="space-y-4 flex-1">
-                            {recentSales.map((sale) => (
-                                <div
-                                    key={sale.id}
-                                    onClick={() => setSelectedSale(sale)}
-                                    className="flex items-center justify-between p-4 bg-gray-50/50 rounded-2xl hover:bg-gray-50 transition-all cursor-pointer border border-transparent hover:border-gray-100 group relative"
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${sale.type === 'Credit' ? 'bg-orange-100 text-orange-600' : 'bg-purple-100 text-purple-600'}`}>
-                                            {sale.type === 'Credit' ? <CreditCard size={20} /> : <ShoppingCart size={20} />}
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-gray-900 text-sm truncate max-w-[100px]">{sale.items[0]?.productName || 'Varios'}</p>
-                                            <p className="text-[10px] font-black text-gray-400">{new Date(sale.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <div className="text-right">
-                                            <p className="font-black text-gray-900 text-sm">S/ {sale.total.toFixed(2)}</p>
-                                            <span className={`text-[8px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-lg ${sale.status === 'Paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                {sale.status === 'Paid' ? 'Pagado' : 'Crédito'}
-                                            </span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => handleDeleteSale(e, sale.id)}
-                                            className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                                            title="Eliminar Venta"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
+                            <button
+                                onClick={handleClearData}
+                                className="w-full py-4 bg-orange-50 text-orange-600 rounded-2xl hover:bg-orange-100 transition-all border border-orange-100 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest mt-4"
+                            >
+                                <Trash2 size={16} /> Reiniciar Estadísticas
+                            </button>
+                            <p className="text-[10px] text-gray-400 italic mt-2">Dinero real ingresado (Ventas al contado y abonos).</p>
                         </div>
                     </div>
                 </div>
