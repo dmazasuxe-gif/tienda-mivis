@@ -57,7 +57,8 @@ interface DataContextType extends AppData {
         pendingReceivables: number;
     };
     deletePaymentFromSale: (saleId: string, paymentIndex: number) => Promise<void>;
-    updateSalePrice: (saleId: string, itemIndex: number, newPrice: number) => Promise<void>;
+    updateSaleItemDetail: (saleId: string, itemIdx: number, updates: { productName?: string, salePrice?: number, discount?: number }) => Promise<void>;
+    updatePaymentDetail: (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number }) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -850,33 +851,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [sales, customers]);
 
-    const updateSalePrice = useCallback(async (saleId: string, itemIndex: number, newPrice: number) => {
+    const updateSaleItemDetail = useCallback(async (saleId: string, itemIdx: number, updates: { productName?: string, salePrice?: number, discount?: number }) => {
         try {
             const sale = sales.find(s => s.id === saleId);
             if (!sale) return;
 
-            const item = sale.items[itemIndex];
+            const item = sale.items[itemIdx];
             if (!item) return;
 
-            const diff = newPrice - item.salePrice;
             const batch = writeBatch(db);
             const saleRef = doc(db, COLLECTIONS.sales, saleId);
 
             const updatedItems = [...sale.items];
-            updatedItems[itemIndex] = {
+            const oldPrice = item.salePrice;
+            const newPrice = updates.salePrice !== undefined ? updates.salePrice : oldPrice;
+            const newName = updates.productName !== undefined ? updates.productName : item.productName;
+
+            const oldDiscount = sale.discount || 0;
+            const newDiscount = updates.discount !== undefined ? updates.discount : oldDiscount;
+
+            updatedItems[itemIdx] = {
                 ...item,
+                productName: newName,
                 salePrice: newPrice
             };
 
-            const newTotal = sale.total + diff;
-            const newRemaining = (sale.remainingBalance || 0) + diff;
+            const itemDiff = newPrice - oldPrice;
+            const discountDiff = newDiscount - oldDiscount;
+            const totalDiff = itemDiff - discountDiff;
 
-            const product = products.find(p => p.id === item.productId);
-            const newProfit = sale.profit + diff;
+            const newTotal = sale.total + totalDiff;
+            const newRemaining = (sale.remainingBalance || 0) + totalDiff;
+            const newProfit = sale.profit + totalDiff;
 
             batch.update(saleRef, {
                 items: updatedItems,
                 total: newTotal,
+                discount: newDiscount,
                 remainingBalance: newRemaining,
                 profit: newProfit,
                 status: newRemaining <= 0 ? 'Paid' : 'Pending'
@@ -887,17 +898,65 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 if (customer) {
                     const customerRef = doc(db, COLLECTIONS.customers, customer.id);
                     batch.update(customerRef, {
-                        balance: customer.balance + diff
+                        balance: Math.max(0, customer.balance + totalDiff)
                     });
                 }
             }
 
             await batch.commit();
         } catch (error) {
-            console.error('Error updating sale price:', error);
-            setError('Error al actualizar el precio');
+            console.error('Error updating sale item detail:', error);
+            setError('Error al actualizar el registro');
         }
-    }, [sales, customers, products]);
+    }, [sales, customers]);
+
+    const updatePaymentDetail = useCallback(async (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number }) => {
+        try {
+            const sale = sales.find(s => s.id === saleId);
+            if (!sale || !sale.payments) return;
+
+            const payment = sale.payments[payIdx];
+            if (!payment) return;
+
+            const batch = writeBatch(db);
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+
+            const updatedPayments = [...sale.payments];
+            const oldAmount = payment.amount;
+            const newAmount = updates.amount !== undefined ? updates.amount : oldAmount;
+            const newMethod = updates.method !== undefined ? updates.method : payment.method;
+
+            updatedPayments[payIdx] = {
+                ...payment,
+                amount: newAmount,
+                method: newMethod
+            };
+
+            const diff = newAmount - oldAmount;
+            const newRemaining = (sale.remainingBalance || 0) - diff;
+
+            batch.update(saleRef, {
+                payments: updatedPayments,
+                remainingBalance: newRemaining,
+                status: newRemaining <= 0 ? 'Paid' : 'Pending'
+            });
+
+            if (sale.customerId) {
+                const customer = customers.find(c => c.id === sale.customerId);
+                if (customer) {
+                    const customerRef = doc(db, COLLECTIONS.customers, customer.id);
+                    batch.update(customerRef, {
+                        balance: Math.max(0, customer.balance - diff)
+                    });
+                }
+            }
+
+            await batch.commit();
+        } catch (error) {
+            console.error('Error updating payment detail:', error);
+            setError('Error al actualizar el pago');
+        }
+    }, [sales, customers]);
 
     return (
         <DataContext.Provider value={{
@@ -928,7 +987,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             registerProductToCustomer,
             getFinancialSummary,
             deletePaymentFromSale,
-            updateSalePrice,
+            updateSaleItemDetail,
+            updatePaymentDetail,
             error,
             clearError,
         }}>
