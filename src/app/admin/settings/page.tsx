@@ -210,7 +210,6 @@ export default function SettingsPage() {
                                             </div>
                                             <button
                                                 type="button"
-                                                disabled={form.authorizedAdmins.length <= 1}
                                                 onClick={() => {
                                                     const newList = [...form.authorizedAdmins];
                                                     newList.splice(idx, 1);

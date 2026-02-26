@@ -36,11 +36,14 @@ export default function LoginPage() {
     useEffect(() => {
         if (settings) {
             setSettingsLoaded(true);
-            // If there are NO authorizedAdmins or settings is empty contextually, 
-            // we might be in the very first run.
+            // If there are NO authorizedAdmins, we default to email login for the master admin.
             if (!settings.authorizedAdmins || settings.authorizedAdmins.length === 0) {
-                setIsFirstAdmin(true);
                 setLoginWithEmail(true);
+                // We only set isFirstAdmin if we believe the system has NEVER been configured.
+                // For now, if there's NO whatsapp configured either, it's likely a first run.
+                if (!settings.whatsapp) {
+                    setIsFirstAdmin(true);
+                }
             }
         }
     }, [settings]);

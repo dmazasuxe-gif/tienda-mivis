@@ -240,7 +240,7 @@ export default function Dashboard() {
                 } else {
                     tipoStatus = sale.remainingBalance && sale.remainingBalance > 0
                         ? 'CRÉDITO / PAGANDO DE A POCOS'
-                        : 'CRÉDITO / FINALIZADO';
+                        : 'PAGO AL CONTADO';
                 }
 
                 return [

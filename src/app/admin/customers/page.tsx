@@ -188,13 +188,13 @@ export default function CustomersPage() {
         finally { setIsProcessing(false); }
     };
 
-    const handleDeleteItem = async (item: any) => {
+    const handleDeleteItem = async (item: { type: 'product' | 'payment', id: string, payIdx?: number }) => {
         if (!window.confirm("¿Estás seguro de eliminar este registro?")) return;
         setIsProcessing(true);
         try {
             if (item.type === 'product') {
                 await deleteSale(item.id);
-            } else {
+            } else if (item.payIdx !== undefined) {
                 await deletePaymentFromSale(item.id, item.payIdx);
             }
         } catch (err) { console.error(err); }
@@ -312,7 +312,7 @@ export default function CustomersPage() {
 
                                 {/* Plus Button */}
                                 {!isCreating && (
-                                    <button onClick={() => setShowPlusMenu(!showPlusMenu)} className="absolute top-10 right-10 w-12 h-12 bg-white text-indigo-600 rounded-2xl flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all z-20">
+                                    <button title="Agregar" onClick={() => setShowPlusMenu(!showPlusMenu)} className="absolute top-10 right-10 w-12 h-12 bg-white text-indigo-600 rounded-2xl flex items-center justify-center shadow-xl hover:scale-110 active:scale-95 transition-all z-20">
                                         <Plus size={30} strokeWidth={3} />
                                     </button>
                                 )}
@@ -343,6 +343,7 @@ export default function CustomersPage() {
                                                             {/* New Direct Discount Button for Products */}
                                                             {item.type === 'product' && (
                                                                 <button
+                                                                    title="Aplicar Descuento"
                                                                     onClick={() => setDiscountingItem({
                                                                         id: item.id,
                                                                         itemIdx: item.itemIdx!,
@@ -356,6 +357,7 @@ export default function CustomersPage() {
                                                                 </button>
                                                             )}
                                                             <button
+                                                                title="Editar"
                                                                 onClick={() => setEditingItem({
                                                                     id: item.id,
                                                                     type: item.type,
@@ -372,8 +374,9 @@ export default function CustomersPage() {
                                                                 <Edit2 size={14} />
                                                             </button>
                                                             <button
-                                                                onClick={() => handleDeleteItem(item)}
-                                                                className="p-2 bg-rose-100 text-rose-600 rounded-xl hover:bg-rose-200 transition-all flex items-center justify-center"
+                                                                title="Eliminar"
+                                                                onClick={() => handleDeleteItem({ type: item.type, id: item.id, payIdx: item.payIdx })}
+                                                                className="p-2 text-white/20 hover:text-rose-500 transition-colors"
                                                             >
                                                                 <Trash2 size={14} />
                                                             </button>
