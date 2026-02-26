@@ -110,10 +110,10 @@ export default function Dashboard() {
                         breakdown['Other'].count += 1;
                     }
                 });
-            } else if (sale.type === 'Cash' && sale.status === 'Paid') {
-                // Fallback for old sales without payment detail
-                breakdown['Cash'].total += sale.total;
-                breakdown['Cash'].count += 1;
+            } else if (sale.status === 'Paid') {
+                const legacyMethod = sale.type === 'Cash' ? 'Cash' : 'Other';
+                breakdown[legacyMethod].total += sale.total;
+                breakdown[legacyMethod].count += 1;
             }
         });
 
@@ -160,7 +160,7 @@ export default function Dashboard() {
             const breakdownRows = Object.entries(paymentBreakdown)
                 .filter(([, data]) => data.total > 0)
                 .map(([method, data]) => [
-                    method === 'Cash' ? 'Efectivo' : method,
+                    method === 'Cash' ? 'efectivo' : method === 'Transfer' ? 'transferencia' : method.toLowerCase(),
                     data.count.toString(),
                     `S/ ${data.total.toFixed(2)}`
                 ]);
@@ -217,7 +217,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="bg-white p-4 px-8 rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-100/50 flex gap-6">
-                    <QuickAction icon={ShoppingCart} label="Nueva Venta" href="/admin/sales" color="purple" />
+                    <QuickAction icon={ShoppingCart} label="Nueva Venta" href="/admin/customers" color="purple" />
                     <QuickAction icon={Package} label="Inventario" href="/admin/inventory" color="blue" />
                     <QuickAction icon={Users} label="Clientes" href="/admin/customers" color="orange" />
                     <QuickAction
@@ -370,7 +370,7 @@ export default function Dashboard() {
                                             .filter(([, data]) => data.total > 0)
                                             .map(([method, data]) => (
                                                 <tr key={method} className="hover:bg-gray-50/50 transition-colors">
-                                                    <td className="px-4 py-3 text-sm font-bold text-gray-700">{method === 'Cash' ? 'Efectivo' : method}</td>
+                                                    <td className="px-4 py-3 text-sm font-bold text-gray-700">{method === 'Cash' ? 'efectivo' : method === 'Transfer' ? 'transferencia' : method.toLowerCase()}</td>
                                                     <td className="px-4 py-3 text-sm font-medium text-gray-400 text-center">{data.count}</td>
                                                     <td className="px-4 py-3 text-sm font-black text-gray-900 text-right">S/ {data.total.toFixed(2)}</td>
                                                 </tr>
