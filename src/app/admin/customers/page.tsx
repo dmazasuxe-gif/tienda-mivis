@@ -371,7 +371,7 @@ export default function CustomersPage() {
                                                 }}
                                                 className="w-full border border-white/20 text-white py-2 px-4 rounded-lg text-sm hover:bg-white/10 transition-all font-medium"
                                             >
-                                                {method === 'Cash' ? 'Efectivo' : method}
+                                                {method === 'Cash' ? 'efectivo' : method === 'Transfer' ? 'transferencia' : method.toLowerCase()}
                                             </button>
                                         ))}
                                     </div>
@@ -410,7 +410,22 @@ export default function CustomersPage() {
                         <h4 className="text-4xl font-black mb-6">S/ {selectedCustomer.balance.toFixed(2)}</h4>
                         <button
                             onClick={() => {
-                                const msg = `Hola ${selectedCustomer.name}, tu saldo en MivisShopping es S/ ${selectedCustomer.balance.toFixed(2)}.`;
+                                const productsList = ledgerItems
+                                    .filter(i => i.type === 'product')
+                                    .map(i => `• ${i.name}: S/ ${i.price?.toFixed(2)}`)
+                                    .join('\n');
+
+                                const paymentsList = ledgerItems
+                                    .filter(i => i.type === 'payment')
+                                    .map(i => `✓ Pago (${i.method?.toLowerCase()}): S/ ${i.amount?.toFixed(2)} [${new Date(i.date).toLocaleDateString('es-PE')}]`)
+                                    .join('\n');
+
+                                const msg = `Hola *${selectedCustomer.name}*, este es el resumen detallado de tu cuenta en *MivisShopping*:\n\n` +
+                                    `*PRODUCTOS ADQUIRIDOS:*\n${productsList || 'Ninguno'}\n\n` +
+                                    `*PAGOS REALIZADOS:*\n${paymentsList || 'Ninguno'}\n\n` +
+                                    `*SALDO TOTAL PENDIENTE:* S/ ${selectedCustomer.balance.toFixed(2)}\n\n` +
+                                    `¡Gracias por tu preferencia!`;
+
                                 window.open(`https://wa.me/51${selectedCustomer.contact.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`, '_blank');
                             }}
                             className="w-full py-4 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-2xl font-bold flex items-center justify-center gap-3 transition-all"
@@ -576,17 +591,18 @@ export default function CustomersPage() {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Número de Celular</label>
+                                            <label className="text-xs font-black uppercase text-gray-400 tracking-wider">Número de Celular (9 dígitos)</label>
                                             <input
                                                 type="text"
+                                                maxLength={9}
                                                 placeholder="Ej. 987654321"
                                                 value={newCustomerForm.contact}
-                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, contact: e.target.value })}
+                                                onChange={e => setNewCustomerForm({ ...newCustomerForm, contact: e.target.value.replace(/\D/g, '') })}
                                                 className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-lg"
                                             />
                                         </div>
                                         <button
-                                            disabled={!newCustomerForm.name || !newCustomerForm.contact}
+                                            disabled={!newCustomerForm.name.trim() || newCustomerForm.contact.length !== 9}
                                             onClick={() => setNewCustomerStep(2)}
                                             className="w-full py-5 bg-gray-900 text-white rounded-2xl font-black flex items-center justify-center gap-3 hover:bg-black active:scale-95 transition-all disabled:opacity-50"
                                         >
@@ -690,7 +706,7 @@ export default function CustomersPage() {
                                                             newCustomerForm.paymentMethod === method ? "bg-purple-600 border-purple-600 text-white" : "border-gray-100 text-gray-400 bg-white"
                                                         )}
                                                     >
-                                                        {method === 'Cash' ? 'EFECTIVO' : method.toUpperCase()}
+                                                        {method === 'Cash' ? 'EFECTIVO' : method === 'Transfer' ? 'TRANSFERENCIA' : method.toUpperCase()}
                                                     </button>
                                                 ))}
                                             </div>
