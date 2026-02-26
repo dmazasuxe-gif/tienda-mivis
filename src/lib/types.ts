@@ -3,7 +3,8 @@ export interface Product {
     id: string;
     name: string;
     description: string;
-    category: 'ROPA PARA DAMAS' | 'CARTERAS/BILLETERAS' | 'ACCESORIOS' | 'CUIDADO PERSONAL' | 'SALUD' | 'OTROS';
+    category: 'ROPA PARA DAMAS' | 'ROPA PARA CABALLEROS' | 'ROPA PARA NIÑ@S' | 'CARTERAS/BILLETERAS/MORRALES' | 'ZAPATILLAS' | 'SANDALIAS/CROCS' | 'SHAMPOOS' | 'SALUD' | 'OTROS';
+    color?: 'Rojo' | 'Azul' | 'Verde' | 'Amarillo' | 'Naranja';
     costPrice: number;
     salePrice: number;
     stock: number;

@@ -14,8 +14,11 @@ export default function InventoryPage() {
     const [currentProduct, setCurrentProduct] = useState<Product | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
 
+    const [selectedCategory, setSelectedCategory] = useState('');
+
     const filteredProducts = products.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
+        p.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        (selectedCategory === '' || p.category === selectedCategory)
     );
 
 
@@ -84,12 +87,21 @@ export default function InventoryPage() {
                     </div>
                     <div className="flex gap-2">
                         <select
+                            value={selectedCategory}
+                            onChange={(e) => setSelectedCategory(e.target.value)}
                             aria-label="Filtrar por categoría"
                             className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 outline-none focus:ring-2 focus:ring-purple-500"
                         >
                             <option value="">Todas las Categorías</option>
-                            <option value="Fashion">Moda</option>
-                            <option value="Personal Care">Cuidado Personal</option>
+                            <option value="ROPA PARA DAMAS">ROPA PARA DAMAS</option>
+                            <option value="ROPA PARA CABALLEROS">ROPA PARA CABALLEROS</option>
+                            <option value="ROPA PARA NIÑ@S">ROPA PARA NIÑ@S</option>
+                            <option value="CARTERAS/BILLETERAS/MORRALES">CARTERAS/BILLETERAS/MORRALES</option>
+                            <option value="ZAPATILLAS">ZAPATILLAS</option>
+                            <option value="SANDALIAS/CROCS">SANDALIAS/CROCS</option>
+                            <option value="SHAMPOOS">SHAMPOOS</option>
+                            <option value="SALUD">SALUD</option>
+                            <option value="OTROS">OTROS</option>
                         </select>
                     </div>
                 </div>

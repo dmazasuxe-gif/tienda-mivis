@@ -503,7 +503,7 @@ export default function CustomersPage() {
                                 <div className="inline-block px-4 py-1.5 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg shadow-emerald-200">{paymentMethod === 'Cash' ? 'efectivo' : paymentMethod.toLowerCase()}</div>
                             </div>
                             <div className="space-y-6">
-                                <div className="bg-gray-50 border-2 border-gray-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-emerald-100 transition-all"><span className="text-gray-300 mr-3">S/</span><input autoFocus type="number" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-transparent outline-none text-gray-900" /></div>
+                                <div className="bg-gray-50 border-2 border-gray-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-emerald-100 transition-all"><span className="text-gray-300 mr-3">S/</span><input autoFocus type="number" value={paymentAmount || ''} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-transparent outline-none text-gray-900" /></div>
                                 <button onClick={handleAddPayment} disabled={!paymentAmount || isProcessing} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg tracking-tight flex items-center justify-center gap-3 shadow-xl shadow-emerald-200 active:scale-95 transition-all"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={24} strokeWidth={3} /> CONFIRMAR</>} </button>
                                 <button onClick={() => setShowPaymentAmount(false)} className="w-full py-2 text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] active:scale-90 transition-all">Cancelar</button>
                             </div>
@@ -531,11 +531,11 @@ export default function CustomersPage() {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Precio S/</label>
-                                                <input type="number" value={editingItem.value} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
+                                                <input type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-rose-400 ml-2 tracking-widest">Descuento S/</label>
-                                                <input type="number" value={editingItem.discount || 0} onChange={e => setEditingItem({ ...editingItem, discount: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-rose-50 border border-transparent text-rose-600 rounded-[1.5rem] font-black text-sm outline-none focus:bg-rose-100 focus:border-rose-200 transition-all" />
+                                                <input type="number" value={editingItem.discount || ''} onChange={e => setEditingItem({ ...editingItem, discount: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-rose-50 border border-transparent text-rose-600 rounded-[1.5rem] font-black text-sm outline-none focus:bg-rose-100 focus:border-rose-200 transition-all" />
                                             </div>
                                         </div>
                                     </>
@@ -553,7 +553,7 @@ export default function CustomersPage() {
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Monto Pagado S/</label>
-                                            <input type="number" value={editingItem.value} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-lg outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600" />
+                                            <input type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-lg outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600" />
                                         </div>
                                     </>
                                 )}
@@ -578,7 +578,7 @@ export default function CustomersPage() {
                                 <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest truncate">{discountingItem.name}</p>
                             </div>
                             <div className="space-y-6">
-                                <div className="bg-rose-50 border-2 border-rose-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-rose-100 transition-all"><span className="text-rose-300 mr-3">S/</span><input autoFocus type="number" value={discountingItem.discount} onChange={(e) => setDiscountingItem({ ...discountingItem, discount: parseFloat(e.target.value) || 0 })} className="w-full bg-transparent outline-none text-rose-600" /></div>
+                                <div className="bg-rose-50 border-2 border-rose-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-rose-100 transition-all"><span className="text-rose-300 mr-3">S/</span><input autoFocus type="number" value={discountingItem.discount || ''} onChange={(e) => setDiscountingItem({ ...discountingItem, discount: parseFloat(e.target.value) || 0 })} className="w-full bg-transparent outline-none text-rose-600" /></div>
                                 <button onClick={handleApplyDiscount} disabled={isProcessing} className="w-full py-5 bg-rose-600 text-white rounded-2xl font-black text-lg tracking-tight flex items-center justify-center gap-3 shadow-xl shadow-rose-200 active:scale-95 transition-all"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={24} strokeWidth={3} /> APLICAR</>} </button>
                                 <button onClick={() => setDiscountingItem(null)} className="w-full py-2 text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em]">Cerrar</button>
                             </div>
