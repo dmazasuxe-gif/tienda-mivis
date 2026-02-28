@@ -299,7 +299,6 @@ export default function Dashboard() {
             });
 
             // Footer
-            // @ts-expect-error - internal property access
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const totalPages = (doc as any).internal.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
