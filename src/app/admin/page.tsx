@@ -143,7 +143,7 @@ export default function Dashboard() {
             doc.setTextColor(255, 255, 255);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(28);
-            doc.text('MIVISSHOPPING', 15, 25);
+            doc.text('MIVIS STUDIO GLAM', 15, 25);
 
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
@@ -230,37 +230,71 @@ export default function Dashboard() {
             doc.setFontSize(14);
             doc.text('HISTORIAL DETALLADO DE TRANSACCIONES', 10, 20);
 
-            const tableRows = sales.map(sale => {
+            const tableRows: any[] = [];
+            sales.forEach(sale => {
                 const customer = customers.find(c => c.id === sale.customerId);
                 const customerName = customer ? customer.name.toUpperCase() : 'CLIENTE GENERAL';
 
                 let tipoStatus = '';
                 if (sale.type === 'Cash') {
-                    tipoStatus = 'CONTADO (EFECTIVO)';
+                    tipoStatus = 'PAGO AL CONTADO';
                 } else {
                     tipoStatus = sale.remainingBalance && sale.remainingBalance > 0
-                        ? 'CRÉDITO / PAGANDO DE A POCOS'
+                        ? 'CRÉDITO (PAGANDO)'
                         : 'PAGO AL CONTADO';
                 }
 
-                return [
+                // Main sale row
+                tableRows.push([
                     new Date(sale.date).toLocaleDateString('es-PE'),
                     sale.id.substring(0, 6).toUpperCase(),
                     `${customerName}\n${sale.items.map(i => `• ${i.productName} (x${i.quantity})`).join('\n')}`,
                     tipoStatus,
                     `S/ ${sale.total.toFixed(2)}`,
-                    sale.remainingBalance && sale.remainingBalance > 0 ? `S/ ${sale.remainingBalance.toFixed(2)}` : 'S/ 0.00 (PAGADO)'
-                ];
+                    sale.remainingBalance && sale.remainingBalance > 0 ? `S/ ${sale.remainingBalance.toFixed(2)}` : 'S/ 0.00'
+                ]);
+
+                // Payment history sub-rows for credit sales
+                if (sale.payments && sale.payments.length > 0) {
+                    sale.payments.forEach((payment, idx) => {
+                        const payMethodLabel = payment.method === 'Cash' ? 'Efectivo' :
+                            payment.method === 'Yape' ? 'Yape' :
+                                payment.method === 'Plin' ? 'Plin' :
+                                    payment.method === 'Transfer' ? 'Transferencia' : payment.method;
+
+                        tableRows.push([
+                            `   ${new Date(payment.date).toLocaleDateString('es-PE')}`,
+                            '',
+                            `      └─ PAGO #${idx + 1} (${payMethodLabel})`,
+                            '',
+                            `S/ ${payment.amount.toFixed(2)}`,
+                            ''
+                        ]);
+                    });
+                }
             });
 
             autoTable(doc, {
                 startY: 25,
-                head: [['FECHA', 'TICKET', 'DETALLE PRODUCTOS', 'TIPO', 'TOTAL', 'PENDIENTE']],
+                head: [['FECHA / PAGO', 'TICKET', 'DETALLE PRODUCTOS / HISTORIAL PAGOS', 'ESTADO', 'MONTO', 'PENDIENTE']],
                 body: tableRows,
                 theme: 'grid',
                 headStyles: { fillColor: [30, 41, 59] },
-                styles: { fontSize: 8 },
-                columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right', fontStyle: 'bold' } }
+                styles: { fontSize: 7, cellPadding: 2 },
+                columnStyles: {
+                    0: { cellWidth: 25 },
+                    1: { cellWidth: 15 },
+                    4: { halign: 'right' },
+                    5: { halign: 'right', fontStyle: 'bold' }
+                },
+                didParseCell: (data) => {
+                    // Highlight payment sub-rows
+                    if (data.row.raw[2] && String(data.row.raw[2]).includes('└─')) {
+                        data.cell.styles.fillColor = [248, 250, 252];
+                        data.cell.styles.textColor = [100, 116, 139];
+                        data.cell.styles.fontSize = 6.5;
+                    }
+                }
             });
 
             // Footer
