@@ -174,38 +174,10 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative pt-28 pb-16 lg:pt-40 lg:pb-24 overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-purple-50 to-transparent -z-10" />
-        <div className="absolute bottom-0 left-0 w-1/4 h-2/3 bg-gradient-to-t from-pink-50 to-transparent -z-10" />
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="text-center max-w-3xl mx-auto"
-          >
-            <span className="px-4 py-1.5 rounded-full bg-pink-100 text-pink-600 text-xs font-bold uppercase tracking-wide">
-              Nueva Colección 2026
-            </span>
-            <h1 className="mt-6 text-4xl md:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight">
-              Estilo que{' '}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-500">Inspira.</span>
-            </h1>
-            <p className="mt-6 text-lg text-gray-600 max-w-xl mx-auto leading-relaxed">
-              Descubre lo último en moda femenina y cuidado personal. Calidad premium y diseños exclusivos pensados para ti.
-            </p>
-            <div className="mt-10 flex justify-center gap-4">
-              <Link href="#products" className="px-8 py-4 bg-gray-900 text-white rounded-full font-semibold shadow-xl shadow-gray-200 hover:bg-gray-800 transition-all flex items-center gap-2 group">
-                Ver Catálogo <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </div>
-          </motion.div>
-        </div>
-      </section >
-
-      {/* Product Highlight Ticker */}
-      <ProductTicker products={activeProducts} onProductClick={openProduct} />
+      {/* Hero Replacement - Product Highlight Ticker */}
+      <section className="relative pt-16 md:pt-20 overflow-hidden">
+        <ProductTicker products={activeProducts} onProductClick={openProduct} />
+      </section>
 
       {/* Products */}
       {/* Products */}
