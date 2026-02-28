@@ -11,6 +11,7 @@ import {
   ChevronLeft, ChevronRight, Package, Tag, Truck,
   MessageCircle, ZoomIn, Instagram, Facebook
 } from 'lucide-react';
+import ProductTicker from '@/components/ProductTicker';
 
 export default function Home() {
   const { products, settings } = useData();
@@ -31,6 +32,7 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsMounted(true);
   }, []);
 
@@ -201,6 +203,9 @@ export default function Home() {
           </motion.div>
         </div>
       </section >
+
+      {/* Product Highlight Ticker */}
+      <ProductTicker products={activeProducts} onProductClick={openProduct} />
 
       {/* Products */}
       {/* Products */}

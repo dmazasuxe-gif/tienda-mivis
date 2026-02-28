@@ -17,6 +17,7 @@ export const UIProvider: React.FC<{ children: React.ReactNode }> = ({ children }
     // Persist preference
     useEffect(() => {
         const saved = localStorage.getItem('sidebarCollapsed');
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (saved === 'true') setIsSidebarCollapsed(true);
     }, []);
 
