@@ -3,9 +3,9 @@
 
 import { useState, useMemo } from 'react';
 import { useData } from '@/context/DataContext';
-import { Customer, Product, PaymentDetails } from '@/lib/types';
+import { Customer, Product, PaymentDetails, Sale } from '@/lib/types';
 import {
-    User, Users, DollarSign, Phone, Search,
+    Users, DollarSign, Phone, Search,
     Plus, X, Loader2, Trash2, Package, ChevronLeft,
     Check, ArrowRight, Smartphone, Wallet, Edit2, Tag
 } from 'lucide-react';
@@ -25,7 +25,8 @@ export default function CustomersPage() {
         deleteSale,
         deletePaymentFromSale,
         updateSaleItemDetail,
-        updatePaymentDetail
+        updatePaymentDetail,
+        processSale
     } = useData();
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -40,6 +41,10 @@ export default function CustomersPage() {
     const [productSearchQuery, setProductSearchQuery] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+
+    // Manual Product State
+    const [showManualForm, setShowManualForm] = useState(false);
+    const [manualProduct, setManualProduct] = useState({ name: '', price: '' });
 
     // Edit Modal States - More detailed for iPad use
     const [editingItem, setEditingItem] = useState<{
@@ -235,6 +240,46 @@ export default function CustomersPage() {
         finally { setIsProcessing(false); }
     };
 
+    const handleRegisterManualProduct = async () => {
+        if (!currentCustomer || !manualProduct.name.trim() || !manualProduct.price) return;
+        setIsProcessing(true);
+        try {
+            const priceVal = parseFloat(manualProduct.price);
+            const saleData: Omit<Sale, 'id'> = {
+                items: [{
+                    productId: 'manual-' + Date.now(),
+                    productName: manualProduct.name.trim().toUpperCase(),
+                    quantity: 1,
+                    salePrice: priceVal
+                }],
+                total: priceVal,
+                costTotal: priceVal,
+                profit: 0,
+                type: 'Credit',
+                customerId: currentCustomer!.id,
+                clientName: currentCustomer!.name,
+                date: new Date().toISOString(),
+                status: 'Pending',
+                remainingBalance: priceVal,
+                installmentPlan: {
+                    numberOfInstallments: 1,
+                    paymentFrequency: 'Monthly',
+                    installments: [{
+                        number: 1,
+                        amount: priceVal,
+                        dueDate: new Date().toISOString(),
+                        status: 'Pending'
+                    }]
+                }
+            };
+            await processSale(saleData);
+            setShowManualForm(false);
+            setShowProductSearch(false);
+            setManualProduct({ name: '', price: '' });
+        } catch (err) { console.error(err); }
+        finally { setIsProcessing(false); }
+    };
+
     return (
         <div className="min-h-screen">
             <AnimatePresence mode="wait">
@@ -254,7 +299,7 @@ export default function CustomersPage() {
 
                         <div className="relative">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                            <input type="text" placeholder="Buscar cliente por nombre..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-5 bg-white border-2 border-transparent focus:border-violet-500 rounded-[2rem] shadow-xl shadow-violet-100 outline-none transition-all text-lg font-medium" />
+                            <input title="Buscar Cliente" type="text" placeholder="Buscar cliente por nombre..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-6 py-5 bg-white border-2 border-transparent focus:border-violet-500 rounded-[2rem] shadow-xl shadow-violet-100 outline-none transition-all text-lg font-medium" />
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -299,8 +344,8 @@ export default function CustomersPage() {
                                 <div className="flex justify-center mb-12">
                                     {isCreating ? (
                                         <div className="flex flex-col gap-4 items-center w-full max-w-md">
-                                            <input autoFocus type="text" placeholder="NOMBRE DEL CLIENTE" value={newCustForm.name} onChange={e => setNewCustForm({ ...newCustForm, name: e.target.value })} className="bg-white/10 border border-white/30 rounded-lg px-6 py-2 text-white text-center text-xl font-medium uppercase outline-none focus:border-white w-full placeholder:text-white/40" />
-                                            <input type="text" maxLength={9} placeholder="CELULAR (9 DÍGITOS)" value={newCustForm.contact} onChange={e => setNewCustForm({ ...newCustForm, contact: e.target.value.replace(/\D/g, '') })} className="bg-white/10 border border-white/30 rounded-lg px-6 py-2 text-white text-center text-sm outline-none focus:border-white w-full placeholder:text-white/40" />
+                                            <input title="Nombre del Cliente" autoFocus type="text" placeholder="NOMBRE DEL CLIENTE" value={newCustForm.name} onChange={e => setNewCustForm({ ...newCustForm, name: e.target.value })} className="bg-white/10 border border-white/30 rounded-lg px-6 py-2 text-white text-center text-xl font-medium uppercase outline-none focus:border-white w-full placeholder:text-white/40" />
+                                            <input title="Celular del Cliente" type="text" maxLength={9} placeholder="CELULAR (9 DÍGITOS)" value={newCustForm.contact} onChange={e => setNewCustForm({ ...newCustForm, contact: e.target.value.replace(/\D/g, '') })} className="bg-white/10 border border-white/30 rounded-lg px-6 py-2 text-white text-center text-sm outline-none focus:border-white w-full placeholder:text-white/40" />
                                             <button onClick={handleFinalCreate} className="bg-white text-indigo-600 px-6 py-2 rounded-lg font-black hover:bg-gray-100 active:scale-95 transition-all mt-2">CONFIRMAR CREAR</button>
                                         </div>
                                     ) : (
@@ -471,28 +516,57 @@ export default function CustomersPage() {
                     <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                         <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white rounded-[3rem] w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
                             <div className="p-8 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-                                <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tight">Seleccionar Producto</h2>
-                                <button onClick={() => setShowProductSearch(false)} className="p-3 hover:bg-white rounded-2xl text-gray-400 transition-all shadow-sm active:scale-90"><X /></button>
+                                <h2 className="text-2xl font-black text-gray-900 uppercase tracking-tight">{showManualForm ? 'Producto Manual' : 'Seleccionar Producto'}</h2>
+                                <button onClick={() => { setShowProductSearch(false); setShowManualForm(false); }} className="p-3 hover:bg-white rounded-2xl text-gray-400 transition-all shadow-sm active:scale-90"><X /></button>
                             </div>
-                            <div className="p-8 flex flex-col gap-6">
-                                <div className="relative">
-                                    <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
-                                    <input autoFocus type="text" placeholder="Buscar en inventario..." value={productSearchQuery} onChange={(e) => setProductSearchQuery(e.target.value)} className="w-full pl-14 pr-8 py-5 bg-gray-50 border border-gray-100 rounded-3xl outline-none font-bold text-gray-900 placeholder:font-normal placeholder:text-gray-300 focus:bg-white focus:border-violet-100 transition-all" />
-                                </div>
-                                <div className="space-y-3 overflow-y-auto max-h-[400px] pr-2 scrollbar-thin">
-                                    {filteredProducts.map(product => (
-                                        <button key={product.id} onClick={() => handleSelectProduct(product)} className="w-full p-5 hover:bg-violet-50 rounded-3xl border border-gray-50 flex justify-between items-center group transition-all active:scale-95 shadow-sm">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden relative border border-gray-100"> {product.images?.[0] ? <Image src={product.images[0]} alt="" fill className="object-cover" /> : <Package className="m-auto text-gray-200" />} </div>
-                                                <div className="text-left">
-                                                    <p className="font-black uppercase text-gray-900 text-sm tracking-tight">{product.name}</p>
-                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Stock: {product.stock}</p>
-                                                </div>
+                            <div className="p-8 flex flex-col gap-6 overflow-y-auto">
+                                {!showManualForm ? (
+                                    <>
+                                        <div className="flex flex-col gap-4">
+                                            <div className="relative">
+                                                <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+                                                <input title="Buscar Producto Mural" autoFocus type="text" placeholder="Buscar en inventario..." value={productSearchQuery} onChange={(e) => setProductSearchQuery(e.target.value)} className="w-full pl-14 pr-8 py-5 bg-gray-50 border border-gray-100 rounded-3xl outline-none font-bold text-gray-900 placeholder:font-normal placeholder:text-gray-300 focus:bg-white focus:border-violet-100 transition-all" />
                                             </div>
-                                            <div className="bg-violet-600 text-white px-4 py-2 rounded-xl font-black text-sm">S/ {product.salePrice.toFixed(2)}</div>
-                                        </button>
-                                    ))}
-                                </div>
+                                            <button title="Agregar Manual" onClick={() => setShowManualForm(true)} className="w-full py-4 border-2 border-dashed border-violet-200 text-violet-600 rounded-2xl font-black text-sm hover:bg-violet-50 transition-all">
+                                                + REGISTRAR PRODUCTO FUERA DE STOCK
+                                            </button>
+                                        </div>
+                                        <div className="space-y-3 pr-2 scrollbar-thin">
+                                            {filteredProducts.map(product => (
+                                                <button key={product.id} onClick={() => handleSelectProduct(product)} className="w-full p-5 hover:bg-violet-50 rounded-3xl border border-gray-50 flex justify-between items-center group transition-all active:scale-95 shadow-sm">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-14 h-14 bg-gray-50 rounded-2xl overflow-hidden relative border border-gray-100"> {product.images?.[0] ? <Image src={product.images[0]} alt="" fill className="object-cover" /> : <Package className="m-auto text-gray-200" />} </div>
+                                                        <div className="text-left">
+                                                            <p className="font-black uppercase text-gray-900 text-sm tracking-tight">{product.name}</p>
+                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Stock: {product.stock}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-violet-600 text-white px-4 py-2 rounded-xl font-black text-sm">S/ {product.salePrice.toFixed(2)}</div>
+                                                </button>
+                                            ))}
+                                            {filteredProducts.length === 0 && (
+                                                <div className="text-center py-10 text-gray-400 italic">No se encontraron productos disponibles</div>
+                                            )}
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Nombre del Producto</label>
+                                            <input title="Producto Manual Nom" autoFocus type="text" value={manualProduct.name} onChange={e => setManualProduct({ ...manualProduct, name: e.target.value })} placeholder="EJ: VESTIDO ANTIGUO" className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-bold uppercase outline-none focus:ring-2 focus:ring-violet-500" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Precio de Venta S/</label>
+                                            <input title="Precio Manual Val" type="number" value={manualProduct.price} onChange={e => setManualProduct({ ...manualProduct, price: e.target.value })} placeholder="0.00" className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-black text-xl outline-none focus:ring-2 focus:ring-violet-500" />
+                                        </div>
+                                        <div className="flex flex-col gap-3 pt-4">
+                                            <button onClick={handleRegisterManualProduct} disabled={isProcessing || !manualProduct.name || !manualProduct.price} className="w-full py-5 bg-violet-600 text-white rounded-2xl font-black text-lg shadow-xl shadow-violet-200 active:scale-95 transition-all flex items-center justify-center gap-3">
+                                                {isProcessing ? <Loader2 className="animate-spin" /> : <><Check /> REGISTRAR DEUDA</>}
+                                            </button>
+                                            <button onClick={() => setShowManualForm(false)} className="w-full py-2 text-gray-400 font-bold uppercase text-[10px] tracking-widest">Volver a búsqueda</button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </div>
@@ -509,8 +583,8 @@ export default function CustomersPage() {
                                 <div className="inline-block px-4 py-1.5 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-full shadow-lg shadow-emerald-200">{paymentMethod === 'Cash' ? 'efectivo' : paymentMethod.toLowerCase()}</div>
                             </div>
                             <div className="space-y-6">
-                                <div className="bg-gray-50 border-2 border-gray-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-emerald-100 transition-all"><span className="text-gray-300 mr-3">S/</span><input autoFocus type="number" value={paymentAmount || ''} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-transparent outline-none text-gray-900" /></div>
-                                <button onClick={handleAddPayment} disabled={!paymentAmount || isProcessing} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg tracking-tight flex items-center justify-center gap-3 shadow-xl shadow-emerald-200 active:scale-95 transition-all"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={24} strokeWidth={3} /> CONFIRMAR</>} </button>
+                                <div className="bg-gray-50 border-2 border-gray-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-emerald-100 transition-all"><span className="text-gray-300 mr-3">S/</span><input title="Monto de Pago" autoFocus type="number" value={paymentAmount || ''} onChange={(e) => setPaymentAmount(e.target.value)} className="w-full bg-transparent outline-none text-gray-900" /></div>
+                                <button title="Confirmar Pago" onClick={handleAddPayment} disabled={!paymentAmount || isProcessing} className="w-full py-5 bg-emerald-600 text-white rounded-2xl font-black text-lg tracking-tight flex items-center justify-center gap-3 shadow-xl shadow-emerald-200 active:scale-95 transition-all"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={24} strokeWidth={3} /> CONFIRMAR</>} </button>
                                 <button onClick={() => setShowPaymentAmount(false)} className="w-full py-2 text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em] active:scale-90 transition-all">Cancelar</button>
                             </div>
                         </motion.div>
@@ -532,16 +606,16 @@ export default function CustomersPage() {
                                     <>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Nombre del Producto</label>
-                                            <input type="text" value={editingItem.name} onChange={e => setEditingItem({ ...editingItem, name: e.target.value })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-bold uppercase text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
+                                            <input title="Editar Nombre" type="text" value={editingItem.name} onChange={e => setEditingItem({ ...editingItem, name: e.target.value })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-bold uppercase text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
                                         </div>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Precio S/</label>
-                                                <input type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
+                                                <input title="Editar Precio" type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-rose-400 ml-2 tracking-widest">Descuento S/</label>
-                                                <input type="number" value={editingItem.discount || ''} onChange={e => setEditingItem({ ...editingItem, discount: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-rose-50 border border-transparent text-rose-600 rounded-[1.5rem] font-black text-sm outline-none focus:bg-rose-100 focus:border-rose-200 transition-all" />
+                                                <input title="Editar Descuento" type="number" value={editingItem.discount || ''} onChange={e => setEditingItem({ ...editingItem, discount: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-rose-50 border border-transparent text-rose-600 rounded-[1.5rem] font-black text-sm outline-none focus:bg-rose-100 focus:border-rose-200 transition-all" />
                                             </div>
                                         </div>
                                     </>
@@ -559,11 +633,12 @@ export default function CustomersPage() {
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Monto Pagado S/</label>
-                                            <input type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-lg outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600" />
+                                            <input title="Editar Monto" type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-lg outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600" />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Fecha del Pago</label>
                                             <input
+                                                title="Editar Fecha"
                                                 type="date"
                                                 value={editingItem.date ? new Date(editingItem.date).toISOString().split('T')[0] : ''}
                                                 onChange={e => {

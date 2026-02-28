@@ -305,7 +305,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Sale Operations
     // ────────────────────────────────────────────────
 
-    const processSale = useCallback(async (saleData: Omit<Sale, 'id' | 'date'>) => {
+    const processSale = useCallback(async (saleData: Omit<Sale, 'id'> & { date?: string }) => {
         try {
             console.log('Processing sale in Firestore...', saleData);
             const batch = writeBatch(db);
