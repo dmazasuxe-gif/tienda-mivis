@@ -7,7 +7,7 @@ import { useData } from '@/context/DataContext';
 import { Product } from '@/lib/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ShoppingBag, ArrowRight, Star, Heart, X,
+  ShoppingBag, Star, Heart, X,
   ChevronLeft, ChevronRight, Package, Tag, Truck,
   MessageCircle, ZoomIn, Instagram, Facebook
 } from 'lucide-react';
