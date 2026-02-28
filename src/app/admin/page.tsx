@@ -230,7 +230,7 @@ export default function Dashboard() {
             doc.setFontSize(14);
             doc.text('HISTORIAL DETALLADO DE TRANSACCIONES', 10, 20);
 
-            const tableRows: any[] = [];
+            const tableRows: string[][] = [];
             sales.forEach(sale => {
                 const customer = customers.find(c => c.id === sale.customerId);
                 const customerName = customer ? customer.name.toUpperCase() : 'CLIENTE GENERAL';
@@ -289,7 +289,8 @@ export default function Dashboard() {
                 },
                 didParseCell: (data) => {
                     // Highlight payment sub-rows
-                    if (data.row.raw[2] && String(data.row.raw[2]).includes('└─')) {
+                    const rowData = data.row.raw as string[];
+                    if (rowData && rowData[2] && rowData[2].includes('└─')) {
                         data.cell.styles.fillColor = [248, 250, 252];
                         data.cell.styles.textColor = [100, 116, 139];
                         data.cell.styles.fontSize = 6.5;
@@ -298,6 +299,8 @@ export default function Dashboard() {
             });
 
             // Footer
+            // @ts-expect-error - internal property access
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const totalPages = (doc as any).internal.getNumberOfPages();
             for (let i = 1; i <= totalPages; i++) {
                 doc.setPage(i);
