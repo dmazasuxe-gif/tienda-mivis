@@ -9,27 +9,34 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingBag, Star, Heart, X,
   ChevronLeft, ChevronRight, Package, Tag, Truck,
-  MessageCircle, ZoomIn, Instagram, Facebook
+  MessageCircle, ZoomIn, Instagram, Facebook, SlidersHorizontal, ChevronDown, ChevronUp
 } from 'lucide-react';
 import ProductTicker from '@/components/ProductTicker';
 
 export default function Home() {
   const { products, settings } = useData();
 
-  const CATEGORY_ORDER = [
-    'ROPA PARA DAMAS',
-    'CARTERAS/BILLETERAS',
-    'ACCESORIOS',
-    'CUIDADO PERSONAL',
-    'SALUD',
-    'OTROS'
-  ];
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [minPrice, setMinPrice] = useState<string>('');
+  const [maxPrice, setMaxPrice] = useState<string>('');
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+
+  const ALL_CATEGORIES = [
+    'ROPA PARA DAMAS',
+    'ROPA PARA CABALLEROS',
+    'ROPA PARA NIÑ@S',
+    'CARTERAS/BILLETERAS/MORRALES',
+    'ZAPATILLAS',
+    'SANDALIAS/CROCS',
+    'SHAMPOOS',
+    'SALUD',
+    'OTROS'
+  ];
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -38,23 +45,15 @@ export default function Home() {
 
   const activeProducts = [...products]
     .filter(p => p.active && p.stock > 0)
-    .sort((a, b) => {
-      const orderA = CATEGORY_ORDER.indexOf(a.category);
-      const orderB = CATEGORY_ORDER.indexOf(b.category);
-      // If category not in list (shouldn't happen), put it at the end
-      const finalA = orderA === -1 ? 999 : orderA;
-      const finalB = orderB === -1 ? 999 : orderB;
-      return finalA - finalB;
-    });
+    .sort((a, b) => b.salePrice - a.salePrice); // Default sort by price desc
 
-  const filteredProducts = filterCategory === 'all'
-    ? activeProducts
-    : activeProducts.filter(p => p.category === filterCategory);
+  const filteredProducts = activeProducts.filter(p => {
+    const matchesCategory = filterCategory === 'all' || p.category === filterCategory;
+    const matchesMinPrice = minPrice === '' || p.salePrice >= parseFloat(minPrice);
+    const matchesMaxPrice = maxPrice === '' || p.salePrice <= parseFloat(maxPrice);
+    return matchesCategory && matchesMinPrice && matchesMaxPrice;
+  });
 
-  const categories = CATEGORY_ORDER.filter(cat => products.some(p => p.category === cat));
-  // Add any other categories that might exist but aren't in the ORDER (precaution)
-  const otherCats = [...new Set(products.map(p => p.category))].filter(cat => !CATEGORY_ORDER.includes(cat));
-  const finalCategories = [...categories, ...otherCats];
 
   const toggleFavorite = (id: string) => {
     setFavorites(prev => {
@@ -188,32 +187,105 @@ export default function Home() {
             <p className="text-gray-500 mt-2">Encuentra lo que buscas.</p>
           </div>
 
-          {/* Category Filter */}
-          {finalCategories.length > 1 && (
-            <div className="flex justify-center gap-2 mb-10 flex-wrap">
-              <button
-                onClick={() => setFilterCategory('all')}
-                className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${filterCategory === 'all'
-                  ? 'bg-gray-900 text-white shadow-lg'
-                  : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-                  }`}
-              >
-                Todos
-              </button>
-              {finalCategories.map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => setFilterCategory(cat)}
-                  className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${filterCategory === cat
-                    ? 'bg-gray-900 text-white shadow-lg'
-                    : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
-                    }`}
+          {/* Advanced Filter Toggle */}
+          <div className="flex flex-col items-center mb-8">
+            <button
+              onClick={() => setIsFilterPanelOpen(!isFilterPanelOpen)}
+              className="flex items-center gap-2 px-6 py-3 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all text-gray-700 font-semibold"
+            >
+              <SlidersHorizontal size={18} className="text-purple-600" />
+              Filtrar categorías y precio
+              {isFilterPanelOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+
+            <AnimatePresence>
+              {isFilterPanelOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden w-full max-w-4xl mt-4"
                 >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          )}
+                  <div className="bg-white border border-gray-100 rounded-3xl p-6 md:p-8 shadow-xl">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      {/* Categories Selection */}
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">Categorías</h3>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => setFilterCategory('all')}
+                            className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filterCategory === 'all'
+                              ? 'bg-purple-600 text-white shadow-lg shadow-purple-200'
+                              : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border border-gray-100'
+                              }`}
+                          >
+                            TODOS
+                          </button>
+                          {ALL_CATEGORIES.map(cat => (
+                            <button
+                              key={cat}
+                              onClick={() => setFilterCategory(cat)}
+                              className={`px-4 py-2 rounded-full text-xs font-bold transition-all ${filterCategory === cat
+                                ? 'bg-purple-600 text-white shadow-lg shadow-purple-200'
+                                : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border border-gray-100'
+                                }`}
+                            >
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Price Range */}
+                      <div>
+                        <h3 className="text-sm font-bold text-gray-900 mb-4 uppercase tracking-wider">Rango de Precio (S/)</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Mínimo</label>
+                            <input
+                              type="number"
+                              value={minPrice}
+                              onChange={(e) => setMinPrice(e.target.value)}
+                              placeholder="0"
+                              className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-sm font-medium"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-gray-400 uppercase">Máximo</label>
+                            <input
+                              type="number"
+                              value={maxPrice}
+                              onChange={(e) => setMaxPrice(e.target.value)}
+                              placeholder="999"
+                              className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-sm font-medium"
+                            />
+                          </div>
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                          <button
+                            onClick={() => {
+                              setFilterCategory('all');
+                              setMinPrice('');
+                              setMaxPrice('');
+                            }}
+                            className="text-xs font-bold text-purple-600 hover:text-purple-700 transition-colors px-4 py-2"
+                          >
+                            Limpiar filtros
+                          </button>
+                          <button
+                            onClick={() => setIsFilterPanelOpen(false)}
+                            className="px-6 py-2 bg-gray-900 text-white rounded-xl text-xs font-bold shadow-lg hover:bg-gray-800 transition-all"
+                          >
+                            Aplicar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Product Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8">
