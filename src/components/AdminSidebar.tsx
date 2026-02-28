@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutDashboard, ShoppingBag, CreditCard, Users, Store, LogOut, Scan, Menu, X, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, ShoppingBag, Users, Store, LogOut, Menu, X, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import clsx from 'clsx';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useState, useEffect, useCallback } from 'react';
@@ -104,8 +104,8 @@ export function AdminSidebar() {
                             animate={{ opacity: 1 }}
                             className="truncate"
                         >
-                            <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
-                                MivisShoping
+                            <h1 className="text-2xl font-black bg-gradient-to-r from-violet-600 to-pink-500 bg-clip-text text-transparent">
+                                Mivis Studio Glam
                             </h1>
                             <p className="text-xs text-gray-500 mt-1">Gestión Avanzada</p>
                         </motion.div>

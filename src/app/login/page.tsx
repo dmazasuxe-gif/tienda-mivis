@@ -188,7 +188,7 @@ export default function LoginPage() {
                     <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-600 to-pink-500 rounded-3xl shadow-xl shadow-purple-200 mb-4">
                         <ShoppingBag size={36} className="text-white" />
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-800">MivisShoping</h1>
+                    <h1 className="text-3xl font-bold text-gray-800 uppercase tracking-tighter">Mivis Studio Glam</h1>
                     <p className="text-gray-500 mt-1">Gestión Avanzada</p>
                 </div>
 
@@ -346,7 +346,7 @@ export default function LoginPage() {
                 </div>
 
                 <p className="text-center text-xs text-gray-400 mt-6">
-                    MivisShoping © {isMounted ? new Date().getFullYear() : ''}
+                    Mivis Studio Glam © {isMounted ? new Date().getFullYear() : ''}
                 </p>
             </motion.div>
         </div>

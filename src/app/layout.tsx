@@ -8,7 +8,7 @@ import { DataProvider } from '@/context/DataContext';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'MivisShoping - Gestión Avanzada',
+  title: 'Mivis Studio Glam - Gestión Avanzada',
   description: 'Sistema de gestión de inventario y ventas',
 };
 

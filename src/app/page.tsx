@@ -83,7 +83,7 @@ export default function Home() {
   const handleWhatsAppBuy = (product: Product) => {
     const categoryLabel = product.category;
     const lines = [
-      `¡Hola! 👋 Estoy interesado/a en el siguiente producto de *MivisShoping*:`,
+      `¡Hola! 👋 Estoy interesado/a en el siguiente producto de *Mivis Studio Glam*:`,
       ``,
       `🛍️ *Producto:* ${product.name}`,
       `🏷️ *Código:* ${product.barcode}`,
@@ -109,24 +109,24 @@ export default function Home() {
           <div className="flex items-center gap-2 group cursor-pointer" onClick={() => {
             // Hidden way to access admin login: triple click the logo
             const now = Date.now();
-            const lastClick = (window as any)._lastLogoClick || 0;
-            const clickCount = (window as any)._logoClickCount || 0;
+            const lastClick = (window as any)._lastLogoClick || 0; // eslint-disable-line
+            const clickCount = (window as any)._logoClickCount || 0; // eslint-disable-line
 
             if (now - lastClick < 500) {
-              (window as any)._logoClickCount = clickCount + 1;
+              (window as any)._logoClickCount = clickCount + 1; // eslint-disable-line
               if (clickCount + 1 >= 3) {
                 window.location.href = '/login';
               }
             } else {
-              (window as any)._logoClickCount = 1;
+              (window as any)._logoClickCount = 1; // eslint-disable-line
             }
-            (window as any)._lastLogoClick = now;
+            (window as any)._lastLogoClick = now; // eslint-disable-line
           }}>
             <div className="w-9 h-9 md:w-10 md:h-10 bg-gradient-to-tr from-purple-600 to-pink-500 rounded-xl flex items-center justify-center text-white">
               <ShoppingBag size={18} />
             </div>
-            <span className="text-lg md:text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-500">
-              MivisShoping
+            <span className="text-lg md:text-xl font-black bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-500 uppercase tracking-tighter">
+              MIVIS STUDIO GLAM
             </span>
           </div>
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-600">
@@ -336,7 +336,7 @@ export default function Home() {
 
       <footer className="bg-gray-900 text-white py-8">
         <div className="max-w-7xl mx-auto px-6 text-center text-sm text-gray-400">
-          <p>MivisShoping © {isMounted ? new Date().getFullYear() : ''} — Todos los derechos reservados.</p>
+          <p>Mivis Studio Glam © {isMounted ? new Date().getFullYear() : ''} — Todos los derechos reservados.</p>
         </div>
       </footer>
 

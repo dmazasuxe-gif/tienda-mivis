@@ -27,7 +27,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center space-y-4">
                     <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto" />
-                    <p className="text-gray-500 font-medium">Cargando MivisShopping...</p>
+                    <p className="text-gray-500 font-medium">Cargando Mivis Studio Glam...</p>
                 </div>
             </div>
         );

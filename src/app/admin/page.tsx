@@ -269,10 +269,10 @@ export default function Dashboard() {
                 doc.setPage(i);
                 doc.setFontSize(8);
                 doc.setTextColor(150);
-                doc.text(`Página ${i} de ${totalPages} - Generado por Sistema MivisShopping`, pageWidth / 2, 290, { align: 'center' });
+                doc.text(`Página ${i} de ${totalPages} - Generado por Sistema Mivis Studio Glam`, pageWidth / 2, 290, { align: 'center' });
             }
 
-            doc.save(`Reporte_MivisShopping_${new Date().getTime()}.pdf`);
+            doc.save(`Reporte_MivisStudioGlam_${new Date().getTime()}.pdf`);
         } catch (error) {
             console.error('PDF Error:', error);
             alert('Error al generar el PDF detallado.');
@@ -289,7 +289,7 @@ export default function Dashboard() {
                     <h1 className="text-4xl font-black text-gray-900 tracking-tight">
                         Menu principal <span className="text-purple-600">Integral</span>
                     </h1>
-                    <p className="text-gray-500 font-medium mt-1">Gestión avanzada para <span className="text-gray-800 font-bold">MivisShopping</span>.</p>
+                    <p className="text-gray-500 font-medium mt-1">Gestión avanzada para <span className="text-gray-800 font-bold">Mivis Studio Glam</span>.</p>
                 </div>
 
                 <div className="bg-white p-4 px-8 rounded-[2rem] border border-gray-100 shadow-xl shadow-gray-100/50 flex gap-6">

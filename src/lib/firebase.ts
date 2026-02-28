@@ -1,6 +1,6 @@
 
 /**
- * Firebase Configuration — MivisShopping
+ * Firebase Configuration — Mivis Studio Glam
  * =======================================
  * Initializes Firebase App, Firestore, and Auth.
  * Credentials are loaded from .env.local (NEXT_PUBLIC_ prefix).
