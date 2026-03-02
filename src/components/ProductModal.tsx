@@ -29,7 +29,7 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
         } else {
             reset({
                 name: '',
-                category: 'ROPA PARA DAMAS',
+                category: 'ROPA',
                 costPrice: undefined,
                 salePrice: undefined,
                 stock: undefined,
@@ -95,15 +95,16 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Categoría</label>
                             <select {...register('category')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all bg-white">
-                                <option value="ROPA PARA DAMAS">ROPA PARA DAMAS</option>
-                                <option value="ROPA PARA CABALLEROS">ROPA PARA CABALLEROS</option>
-                                <option value="ROPA PARA NIÑ@S">ROPA PARA NIÑ@S</option>
-                                <option value="CARTERAS/BILLETERAS/MORRALES">CARTERAS/BILLETERAS/MORRALES</option>
-                                <option value="ZAPATILLAS">ZAPATILLAS</option>
+                                <option value="ROPA">ROPA</option>
+                                <option value="CORREAS">CORREAS</option>
+                                <option value="GORROS">GORROS</option>
                                 <option value="SANDALIAS/CROCS">SANDALIAS/CROCS</option>
-                                <option value="SHAMPOOS">SHAMPOOS</option>
+                                <option value="CARTERAS/MORRALES">CARTERAS/MORRALES</option>
+                                <option value="ZAPATILLAS">ZAPATILLAS</option>
+                                <option value="ACCESORIOS">ACCESORIOS</option>
+                                <option value="FRAGANCIAS">FRAGANCIAS</option>
                                 <option value="SALUD">SALUD</option>
-                                <option value="OTROS">OTROS</option>
+                                <option value="SHAMPOOS">SHAMPOOS</option>
                             </select>
                         </div>
 

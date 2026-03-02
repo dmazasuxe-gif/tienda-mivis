@@ -93,15 +93,16 @@ export default function InventoryPage() {
                             className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-600 outline-none focus:ring-2 focus:ring-purple-500"
                         >
                             <option value="">Todas las Categorías</option>
-                            <option value="ROPA PARA DAMAS">ROPA PARA DAMAS</option>
-                            <option value="ROPA PARA CABALLEROS">ROPA PARA CABALLEROS</option>
-                            <option value="ROPA PARA NIÑ@S">ROPA PARA NIÑ@S</option>
-                            <option value="CARTERAS/BILLETERAS/MORRALES">CARTERAS/BILLETERAS/MORRALES</option>
-                            <option value="ZAPATILLAS">ZAPATILLAS</option>
+                            <option value="ROPA">ROPA</option>
+                            <option value="CORREAS">CORREAS</option>
+                            <option value="GORROS">GORROS</option>
                             <option value="SANDALIAS/CROCS">SANDALIAS/CROCS</option>
-                            <option value="SHAMPOOS">SHAMPOOS</option>
+                            <option value="CARTERAS/MORRALES">CARTERAS/MORRALES</option>
+                            <option value="ZAPATILLAS">ZAPATILLAS</option>
+                            <option value="ACCESORIOS">ACCESORIOS</option>
+                            <option value="FRAGANCIAS">FRAGANCIAS</option>
                             <option value="SALUD">SALUD</option>
-                            <option value="OTROS">OTROS</option>
+                            <option value="SHAMPOOS">SHAMPOOS</option>
                         </select>
                     </div>
                 </div>

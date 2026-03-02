@@ -27,15 +27,16 @@ export default function Home() {
   const [isMounted, setIsMounted] = useState(false);
 
   const ALL_CATEGORIES = [
-    'ROPA PARA DAMAS',
-    'ROPA PARA CABALLEROS',
-    'ROPA PARA NIÑ@S',
-    'CARTERAS/BILLETERAS/MORRALES',
-    'ZAPATILLAS',
+    'ROPA',
+    'CORREAS',
+    'GORROS',
     'SANDALIAS/CROCS',
-    'SHAMPOOS',
+    'CARTERAS/MORRALES',
+    'ZAPATILLAS',
+    'ACCESORIOS',
+    'FRAGANCIAS',
     'SALUD',
-    'OTROS'
+    'SHAMPOOS'
   ];
 
   useEffect(() => {
