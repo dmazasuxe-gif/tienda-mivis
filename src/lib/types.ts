@@ -4,7 +4,6 @@ export interface Product {
     name: string;
     description: string;
     category: 'ROPA' | 'CORREAS' | 'GORROS' | 'SANDALIAS/CROCS' | 'CARTERAS/MORRALES' | 'ZAPATILLAS' | 'ACCESORIOS' | 'FRAGANCIAS' | 'SALUD' | 'SHAMPOOS';
-    color?: 'Rojo' | 'Azul' | 'Verde' | 'Amarillo' | 'Naranja';
     costPrice: number;
     salePrice: number;
     stock: number;

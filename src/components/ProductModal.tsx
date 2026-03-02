@@ -15,8 +15,7 @@ interface ProductModalProps {
 }
 
 export function ProductModal({ isOpen, onClose, onSubmit, initialData }: ProductModalProps) {
-    const { register, handleSubmit, reset, setValue, watch } = useForm();
-    const category = watch('category');
+    const { register, handleSubmit, reset, setValue } = useForm();
 
     const [images, setImages] = useState<string[]>([]);
 
@@ -108,18 +107,6 @@ export function ProductModal({ isOpen, onClose, onSubmit, initialData }: Product
                             </select>
                         </div>
 
-                        {category === 'SHAMPOOS' && (
-                            <div className="space-y-2 animate-in slide-in-from-top-2">
-                                <label className="text-sm font-medium text-gray-700">Color de Shampoo</label>
-                                <select {...register('color')} className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none transition-all bg-white">
-                                    <option value="Rojo">Rojo</option>
-                                    <option value="Azul">Azul</option>
-                                    <option value="Verde">Verde</option>
-                                    <option value="Amarillo">Amarillo</option>
-                                    <option value="Naranja">Naranja</option>
-                                </select>
-                            </div>
-                        )}
 
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-gray-700">Stock Inicial</label>
