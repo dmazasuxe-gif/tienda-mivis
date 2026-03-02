@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función para verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Reglas para productos: Lectura pública (para la tienda), Escritura solo admin
+    match /products/{productId} {
+      allow read: if true; 
+      allow write: if isAuthenticated();
+    }
+
+    // Reglas para clientes: Solo personal autenticado
+    match /customers/{customerId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Reglas para ventas: Solo personal autenticado
+    match /sales/{saleId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Reglas para configuración: Lectura pública, Escritura solo admin
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+  }
+}

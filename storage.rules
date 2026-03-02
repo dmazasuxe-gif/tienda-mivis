@@ -1,0 +1,27 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Función para verificar si el usuario está autenticado
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Carpeta de productos: Permitir a todos ver imágenes, solo admin subir
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    // Carpeta de backups: Solo acceso para administradores autenticados
+    match /backups/{allPaths=**} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Otros archivos por defecto
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+  }
+}

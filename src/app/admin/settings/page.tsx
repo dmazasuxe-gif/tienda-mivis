@@ -3,12 +3,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
-import { MessageCircle, Instagram, Save, Loader2, Smartphone, Facebook, Users, Trash2, UserPlus } from 'lucide-react';
+import { MessageCircle, Instagram, Save, Loader2, Smartphone, Facebook, Users, Trash2, UserPlus, Database, Download, Upload } from 'lucide-react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 
 export default function SettingsPage() {
-    const { settings, updateSettings, isLoading } = useData();
+    const { settings, updateSettings, isLoading, products, sales, customers, restoreBackup } = useData();
     const [form, setForm] = useState({
         whatsapp: '',
         instagram: '',
@@ -46,6 +46,52 @@ export default function SettingsPage() {
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleDownloadBackup = () => {
+        const backupData = {
+            products,
+            sales,
+            customers,
+            settings,
+            createdAt: new Date().toISOString(),
+            version: '1.0'
+        };
+
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const date = new Date().toISOString().split('T')[0];
+        a.href = url;
+        a.download = `mivis_backup_${date}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleRestoreBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (!window.confirm('⚠️ ADVERTENCIA CRÍTICA: Vas a restaurar una copia de seguridad. Esto BORRARÁ todos los datos actuales y los reemplazará con los del archivo. ¿Deseas continuar?')) {
+            e.target.value = '';
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const json = JSON.parse(event.target?.result as string);
+                await restoreBackup(json);
+            } catch (err) {
+                console.error('Error parsing backup file:', err);
+                alert('Error: El archivo de backup no es válido.');
+            } finally {
+                e.target.value = '';
+            }
+        };
+        reader.readAsText(file);
     };
 
     if (isLoading) {
@@ -255,6 +301,62 @@ export default function SettingsPage() {
                         </button>
                     </div>
                 </form>
+            </motion.div>
+
+            {/* Backup & Restore Section */}
+            <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="mt-8 bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden"
+            >
+                <div className="p-8 space-y-6">
+                    <div className="flex items-center gap-3 text-blue-600 mb-2">
+                        <Database size={24} />
+                        <h2 className="text-xl font-semibold text-gray-900">Copia de Seguridad y Restauración</h2>
+                    </div>
+
+                    <p className="text-sm text-gray-500">
+                        Gestiona tus datos de forma profesional. Puedes descargar una copia completa o restaurar el sistema a un punto anterior.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Download Backup */}
+                        <button
+                            type="button"
+                            onClick={handleDownloadBackup}
+                            className="flex items-center justify-center gap-3 p-6 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-100 transition-all border border-blue-100 group"
+                        >
+                            <Download className="group-hover:translate-y-1 transition-transform" />
+                            <div className="text-left">
+                                <p className="font-bold">Descargar Backup</p>
+                                <p className="text-[10px] opacity-70 uppercase font-black">Exportar todo a JSON</p>
+                            </div>
+                        </button>
+
+                        {/* Restore Backup */}
+                        <label className="flex items-center justify-center gap-3 p-6 bg-orange-50 text-orange-700 rounded-2xl hover:bg-orange-100 transition-all border border-orange-100 cursor-pointer group">
+                            <Upload className="group-hover:-translate-y-1 transition-transform" />
+                            <div className="text-left">
+                                <p className="font-bold">Restaurar Backup</p>
+                                <p className="text-[10px] opacity-70 uppercase font-black">Subir archivo .json</p>
+                            </div>
+                            <input
+                                type="file"
+                                accept=".json"
+                                className="hidden"
+                                onChange={handleRestoreBackup}
+                            />
+                        </label>
+                    </div>
+
+                    <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 flex gap-3">
+                        <span className="text-yellow-600 font-bold">⚠️ Nota:</span>
+                        <p className="text-xs text-yellow-700 leading-tight">
+                            El sistema realiza backups automáticos en la nube cada vez que se crea un producto o venta. Esta sección es para control manual.
+                        </p>
+                    </div>
+                </div>
             </motion.div>
 
             {/* Preview Section */}

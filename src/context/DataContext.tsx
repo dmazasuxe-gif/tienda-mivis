@@ -60,6 +60,7 @@ interface DataContextType extends AppData {
     updateSaleItemDetail: (saleId: string, itemIdx: number, updates: { productName?: string, salePrice?: number, discount?: number }) => Promise<void>;
     updatePaymentDetail: (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number, date?: string }) => Promise<void>;
     clearSalesData: () => Promise<void>;
+    restoreBackup: (backupData: Record<string, unknown>) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -966,13 +967,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 batch.delete(doc(db, COLLECTIONS.sales, s.id));
             });
 
-            // Also reset product soldCounts if they exist
             products.forEach(p => {
                 batch.update(doc(db, COLLECTIONS.products, p.id), { soldCount: 0 });
             });
 
-            // Reset customer balances? Usually better to keep them if they represent reality, 
-            // but if we clear sales, balances should logically be zero if all debt comes from sales.
             customers.forEach(c => {
                 batch.update(doc(db, COLLECTIONS.customers, c.id), { balance: 0, history: [] });
             });
@@ -983,6 +981,76 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setError('Error al limpiar los datos');
         }
     }, [sales, products, customers]);
+
+    const restoreBackup = useCallback(async (backupData: Record<string, any>) => {
+        try {
+            setIsLoading(true);
+            setError(null);
+            console.log('--- Iniciando Restauración de Backup ---');
+
+            const collections = ['products', 'customers', 'sales'];
+            for (const col of collections) {
+                if (!Array.isArray(backupData[col])) {
+                    throw new Error(`El backup es inválido: Falta la colección ${col}`);
+                }
+            }
+
+            const clearCollection = async (col: string, items: { id: string }[]) => {
+                let batch = writeBatch(db);
+                let count = 0;
+                for (const item of items) {
+                    batch.delete(doc(db, col, item.id));
+                    count++;
+                    if (count >= 400) {
+                        await batch.commit();
+                        batch = writeBatch(db);
+                        count = 0;
+                    }
+                }
+                if (count > 0) await batch.commit();
+            };
+
+            await clearCollection(COLLECTIONS.products, products);
+            await clearCollection(COLLECTIONS.customers, customers);
+            await clearCollection(COLLECTIONS.sales, sales);
+
+            const insertCollection = async (col: string, items: Record<string, unknown>[]) => {
+                let batch = writeBatch(db);
+                let count = 0;
+                for (const item of items) {
+                    const typedItem = item as { id: string };
+                    const { id, ...data } = typedItem;
+                    const cleanData = JSON.parse(JSON.stringify(data));
+                    batch.set(doc(db, col, id), cleanData);
+                    count++;
+                    if (count >= 400) {
+                        await batch.commit();
+                        batch = writeBatch(db);
+                        count = 0;
+                    }
+                }
+                if (count > 0) await batch.commit();
+            };
+
+            await insertCollection(COLLECTIONS.products, backupData.products);
+            await insertCollection(COLLECTIONS.customers, backupData.customers);
+            await insertCollection(COLLECTIONS.sales, backupData.sales);
+
+            if (backupData.settings && Object.keys(backupData.settings).length > 0) {
+                await updateSettings(backupData.settings);
+            }
+
+            console.log('--- Restauración Completada con Éxito ---');
+            setIsLoading(false);
+            alert('¡Sistema restaurado correctamente desde el backup!');
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error in restoration:', err);
+            setError(`Error al restaurar backup: ${err.message}`);
+            setIsLoading(false);
+            throw err;
+        }
+    }, [products, customers, sales, updateSettings]);
 
     return (
         <DataContext.Provider value={{
@@ -1016,6 +1084,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updateSaleItemDetail,
             updatePaymentDetail,
             clearSalesData,
+            restoreBackup,
             error,
             clearError,
         }}>
