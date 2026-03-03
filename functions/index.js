@@ -20,7 +20,23 @@ setGlobalOptions({ region: 'us-central1' });
  */
 async function performBackup() {
     try {
-        console.log('--- Iniciando Backup Automático ---');
+        console.log('--- Comprobando necesidad de Backup ---');
+
+        // --- COOLDOWN LOGIC: Solo 1 backup cada 24 horas ---
+        const statusRef = db.collection('settings').doc('backup_status');
+        const statusDoc = await statusRef.get(); // 1 read
+        const now = Date.now();
+        const COOLDOWN_TIME = 24 * 60 * 60 * 1000; // 24 Horas
+
+        if (statusDoc.exists) {
+            const lastBackup = statusDoc.data().lastAutoBackup || 0;
+            if (now - lastBackup < COOLDOWN_TIME) {
+                console.log('Backup omitido: Cooldown activo (Ya se hizo uno hace menos de 24h)');
+                return false;
+            }
+        }
+
+        console.log('--- Iniciando Backup Automático (Lectura completa) ---');
 
         // Use standard collection names matching the app logic
         const collections = ['products', 'customers', 'sales', 'settings'];
@@ -38,7 +54,6 @@ async function performBackup() {
             const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             if (colName === 'settings') {
-                // Settings is usually a single document 'config'
                 const configDoc = data.find(d => d.id === 'config');
                 backupData.settings = configDoc || {};
             } else {
@@ -47,10 +62,10 @@ async function performBackup() {
         }
 
         // Generate Filename: backup-YYYY-MM-DD-HH-MM.json
-        const now = new Date();
-        const dateStr = now.toISOString().split('T')[0];
-        const timeStr = now.getHours().toString().padStart(2, '0') + '-' +
-            now.getMinutes().toString().padStart(2, '0');
+        const dateObj = new Date();
+        const dateStr = dateObj.toISOString().split('T')[0];
+        const timeStr = dateObj.getHours().toString().padStart(2, '0') + '-' +
+            dateObj.getMinutes().toString().padStart(2, '0');
         const fileName = `backups/backup-${dateStr}-${timeStr}.json`;
 
         // Save to Firebase Storage
@@ -66,6 +81,9 @@ async function performBackup() {
                 }
             }
         });
+
+        // Update status for cooldown
+        await statusRef.set({ lastAutoBackup: now }, { merge: true });
 
         console.log(`Backup creado con éxito: ${fileName}`);
 

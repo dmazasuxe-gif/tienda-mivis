@@ -1,0 +1,10 @@
+functions
+node_modules
+.git
+.next
+out
+build
+dist
+*.log
+.env*
+! .env.example
