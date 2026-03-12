@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
-import { MessageCircle, Instagram, Save, Loader2, Smartphone, Facebook, Users, Trash2, UserPlus, Database, Download, Upload } from 'lucide-react';
+import { MessageCircle, Instagram, Save, Loader2, Smartphone, Facebook, Users, Trash2, UserPlus, Database, Download, Upload, Bell, Volume2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import clsx from 'clsx';
 
@@ -15,6 +15,10 @@ export default function SettingsPage() {
         tiktok: '',
         facebook: '',
         authorizedAdmins: [] as { username: string; password: string }[],
+        alarmConfig: {
+            enabled: true,
+            days: 15
+        }
     });
     const [newUser, setNewUser] = useState({ username: '', password: '' });
     const [isSaving, setIsSaving] = useState(false);
@@ -28,6 +32,10 @@ export default function SettingsPage() {
                 tiktok: settings.tiktok || '',
                 facebook: settings.facebook || '',
                 authorizedAdmins: settings.authorizedAdmins || [{ username: 'admin', password: 'adminpassword' }],
+                alarmConfig: {
+                    enabled: settings.alarmConfig?.enabled ?? true,
+                    days: settings.alarmConfig?.days ?? 15
+                },
             });
         }
     }, [settings]);
@@ -194,6 +202,79 @@ export default function SettingsPage() {
                                 />
                             </div>
                         </div>
+                        <div className="h-px bg-gray-100" />
+
+                        {/* Alarm Configuration Section */}
+                        <section className="space-y-6">
+                            <div className="flex items-center gap-3 text-orange-600 mb-2">
+                                <Bell size={24} />
+                                <h2 className="text-xl font-semibold text-gray-900">Alarma de Cobro Automática</h2>
+                            </div>
+
+                            <div className="bg-orange-50/50 p-6 rounded-3xl border border-orange-100 space-y-6">
+                                <p className="text-sm text-orange-700 font-medium">
+                                    Configura los recordatorios por voz para clientes deudores. El sistema notificará automáticamente después de un rango de días tras registrar un pago.
+                                </p>
+
+                                <div className="flex items-center gap-4 mb-4">
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only peer"
+                                            checked={form.alarmConfig.enabled}
+                                            onChange={(e) => setForm({
+                                                ...form,
+                                                alarmConfig: { ...form.alarmConfig, enabled: e.target.checked }
+                                            })}
+                                        />
+                                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                                        <span className="ml-3 text-sm font-bold text-gray-700">{form.alarmConfig.enabled ? 'Activado' : 'Desactivado'}</span>
+                                    </label>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium text-gray-700 ml-1">Días para el recordatorio después del pago</label>
+                                        <input
+                                            type="number"
+                                            className="w-full px-4 py-3 bg-white border border-gray-100 rounded-2xl focus:ring-2 focus:ring-orange-500 outline-none text-sm"
+                                            value={form.alarmConfig.days || ''}
+                                            placeholder="Ej: 15"
+                                            title="Días para el recordatorio"
+                                            onChange={(e) => setForm({
+                                                ...form,
+                                                alarmConfig: { ...form.alarmConfig, days: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 }
+                                            })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="p-4 bg-white rounded-2xl border border-orange-50 flex items-start gap-3">
+                                    <Volume2 className="text-orange-500 mt-1 shrink-0" size={20} />
+                                    <div>
+                                        <p className="text-xs font-bold text-gray-800">Mensaje que se escuchará:</p>
+                                        <p className="text-xs text-gray-500 italic mt-1">
+                                            &quot;Hola Mivis hoy se cumple la fecha para el cobro del cliente [Nombre del Cliente]. no te olvides.&quot;
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!('speechSynthesis' in window)) return;
+                                        window.speechSynthesis.cancel();
+                                        const utterance = new SpeechSynthesisUtterance("Hola Mivis esto es una prueba de la alarma de cobro. El sistema funciona correctamente.");
+                                        utterance.lang = 'es-ES';
+                                        window.speechSynthesis.speak(utterance);
+                                    }}
+                                    className="px-6 py-3 bg-white border border-orange-200 text-orange-600 rounded-2xl font-bold text-sm hover:bg-orange-50 transition-all flex items-center justify-center gap-2"
+                                >
+                                    <Volume2 size={18} /> Probar Voz de Alarma
+                                </button>
+                            </div>
+                        </section>
+
                         <div className="h-px bg-gray-100" />
 
                         {/* Admin Access Control */}

@@ -1,0 +1,77 @@
+﻿
+> tiendavirtual@0.1.0 build
+> next build
+
+Ôû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+Ô£ô Compiled successfully in 5.4s
+  Running TypeScript ...
+  Collecting page data using 19 workers ...
+  Generating static pages using 19 workers (0/10) ...
+npm : Error occurred 
+prerendering page 
+"/_not-found". Read more: https:
+//nextjs.org/docs/messages/prere
+nder-error
+En línea: 1 Carácter: 1
++ npm run build > 
+build_error.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~
+    + CategoryInfo          : N 
+   otSpecified: (Error occurre  
+  d ...prerender-error:String   
+ ) [], RemoteException
+    + FullyQualifiedErrorId : N 
+   ativeCommandError
+ 
+Error [FirebaseError]: 
+Firebase: Error 
+(auth/invalid-api-key).
+    at p (D:\tiendavirtual\.next
+\server\chunks\ssr\[root-of-the-
+server]__024a16f8._.js:1:33336)
+    at q (D:\tiendavirtual\.next
+\server\chunks\ssr\[root-of-the-
+server]__024a16f8._.js:1:33384)
+    at aa.instanceFactory (D:\ti
+endavirtual\.next\server\chunks\
+ssr\[root-of-the-server]__024a16
+f8._.js:1:85884)
+    at 
+ac.getOrInitializeService (D:\ti
+endavirtual\.next\server\chunks\
+ssr\[root-of-the-server]__024a16
+f8._.js:1:13345)
+    at ac.initialize (D:\tiendav
+irtual\.next\server\chunks\ssr\[
+root-of-the-server]__024a16f8._.
+js:1:12753)
+    at aJ (D:\tiendavirtual\.nex
+t\server\chunks\ssr\[root-of-the
+-server]__024a16f8._.js:1:71229)
+    at bx (D:\tiendavirtual\.nex
+t\server\chunks\ssr\[root-of-the
+-server]__024a16f8._.js:1:86616)
+    at module evaluation (D:\tie
+ndavirtual\.next\server\chunks\s
+sr\[root-of-the-server]__024a16f
+8._.js:14:68486)
+    at instantiateModule (D:\tie
+ndavirtual\.next\server\chunks\s
+sr\[turbopack]_runtime.js:740:9)
+    at getOrInstantiateModuleFro
+mParent (D:\tiendavirtual\.next\
+server\chunks\ssr\[turbopack]_ru
+ntime.js:763:12) {
+  code: 'auth/invalid-api-key',
+  customData: [Object],
+  digest: '4287383777'
+}
+Export encountered an error on 
+/_not-found/page: /_not-found, 
+exiting the build.
+Ô¿» Next.js build worker exited 
+with code: 1 and signal: null

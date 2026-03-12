@@ -60,8 +60,11 @@ interface DataContextType extends AppData {
     deletePaymentFromSale: (saleId: string, paymentIndex: number) => Promise<void>;
     updateSaleItemDetail: (saleId: string, itemIdx: number, updates: { productName?: string, salePrice?: number, discount?: number }) => Promise<void>;
     updatePaymentDetail: (saleId: string, payIdx: number, updates: { method?: PaymentDetails['method'], amount?: number, date?: string }) => Promise<void>;
+    updateGroupedPayment: (paymentId: string, updates: { method?: PaymentDetails['method'], amount?: number, date?: string }) => Promise<void>;
     clearSalesData: () => Promise<void>;
     restoreBackup: (backupData: Record<string, unknown>) => Promise<void>;
+    deleteGroupedPayment: (paymentId: string) => Promise<void>;
+    updateAlarmStatus: (customerId: string, alarmId: string, updates: { playedCount?: number, isCompleted?: boolean }) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -87,6 +90,10 @@ const DEFAULT_SETTINGS: AppData['settings'] = {
     tiktok: '',
     facebook: '',
     authorizedAdmins: [{ username: 'admin', password: 'adminpassword' }], // Base master user
+    alarmConfig: {
+        enabled: true,
+        days: 15
+    }
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -413,7 +420,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // Calculate total to pay and update installment statuses/amounts
             let totalPaid = 0;
-            let redistributionPool = 0;
             const updatedInstallments = [...sale.installmentPlan.installments];
 
             // 1. Process explicit payments
@@ -421,13 +427,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const num = parseInt(numStr);
                 const idx = updatedInstallments.findIndex(i => i.number === num);
                 if (idx !== -1 && updatedInstallments[idx].status === 'Pending') {
-                    const originalAmount = updatedInstallments[idx].amount;
+                    const currentAmount = updatedInstallments[idx].amount;
                     totalPaid += paidAmount;
-                    redistributionPool += (originalAmount - paidAmount);
+
+                    const newAmount = Math.max(0, currentAmount - paidAmount);
                     updatedInstallments[idx] = {
                         ...updatedInstallments[idx],
-                        amount: paidAmount,
-                        status: 'Paid' as const
+                        amount: newAmount,
+                        status: newAmount <= 0.01 ? 'Paid' : 'Pending'
                     };
                 }
             });
@@ -437,17 +444,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return;
             }
 
-            // 2. Redistribute difference if any
-            if (redistributionPool !== 0) {
-                const nextPendingIdx = updatedInstallments.findIndex(inst => inst.status === 'Pending');
-                if (nextPendingIdx !== -1) {
-                    updatedInstallments[nextPendingIdx] = {
-                        ...updatedInstallments[nextPendingIdx],
-                        amount: Math.max(0, updatedInstallments[nextPendingIdx].amount + redistributionPool)
-                    };
-                }
-            }
-
             // Record payment in history
             const newPayment: PaymentDetails = {
                 method: method as PaymentDetails['method'],
@@ -455,25 +451,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 date: new Date().toISOString(),
             };
 
-            const newRemaining = Math.max(0, (sale.remainingBalance || 0) - totalPaid);
-
-            // Update sale doc
+            // Update sale doc with ATOMIC updates
             batch.update(saleRef, {
                 'installmentPlan.installments': updatedInstallments,
-                payments: [...(sale.payments || []), newPayment],
-                remainingBalance: newRemaining,
-                status: newRemaining <= 0 ? 'Paid' : 'Pending',
+                payments: arrayUnion(newPayment),
+                remainingBalance: increment(-totalPaid),
+                status: (sale.remainingBalance || 0) - totalPaid <= 0 ? 'Paid' : 'Pending',
             });
 
-            // Update customer balance
+            // Update customer balance ATOMICALLY and register alarm
             if (sale.customerId) {
                 const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
-                const customer = customers.find(c => c.id === sale.customerId);
-                if (customer) {
-                    batch.update(customerRef, {
-                        balance: Math.max(0, customer.balance - totalPaid),
-                    });
+                const updates: Record<string, unknown> = {
+                    balance: increment(-totalPaid),
+                };
+
+                // Register Alarm if enabled and still has balance
+                if (settings.alarmConfig?.enabled && (sale.remainingBalance || 0) - totalPaid > 0) {
+                    const days = settings.alarmConfig.days ?? 15;
+                    const alarmDate = new Date();
+                    alarmDate.setDate(alarmDate.getDate() + days);
+
+                    const newAlarm = {
+                        id: Date.now().toString(),
+                        date: alarmDate.toISOString(),
+                        clientName: sale.clientName || 'Cliente',
+                        playedCount: 0,
+                        isCompleted: false
+                    };
+                    updates.pendingAlarms = arrayUnion(newAlarm);
                 }
+
+                batch.update(customerRef, updates);
             }
 
             await batch.commit();
@@ -484,7 +493,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setError(`Error al registrar abono: ${err.message || 'Error de permisos o conexión'}`);
             throw err;
         }
-    }, [sales, customers]);
+    }, [sales, settings]);
 
     const reverseInstallmentPayment = useCallback(async (saleId: string, installmentNumber: number) => {
         try {
@@ -549,30 +558,45 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (!sale) return;
 
             const batch = writeBatch(db);
+            const saleRef = doc(db, COLLECTIONS.sales, saleId);
 
-            // Update sale
+            // Update sale with ATOMIC updates
             const newPayment: PaymentDetails = {
                 method: method as PaymentDetails['method'],
                 amount,
                 date: new Date().toISOString(),
             };
-            const newRemaining = (sale.remainingBalance || 0) - amount;
-            const saleRef = doc(db, COLLECTIONS.sales, saleId);
+
             batch.update(saleRef, {
-                payments: [...(sale.payments || []), newPayment],
-                remainingBalance: newRemaining,
-                status: newRemaining <= 0 ? 'Paid' : 'Pending',
+                payments: arrayUnion(newPayment),
+                remainingBalance: increment(-amount),
+                status: (sale.remainingBalance || 0) - amount <= 0 ? 'Paid' : 'Pending',
             });
 
-            // Update customer balance
+            // Update customer balance ATOMICALLY and register alarm
             if (sale.customerId) {
                 const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
-                const customer = customers.find(c => c.id === sale.customerId);
-                if (customer) {
-                    batch.update(customerRef, {
-                        balance: customer.balance - amount,
-                    });
+                const updates: Record<string, unknown> = {
+                    balance: increment(-amount),
+                };
+
+                // Register Alarm if enabled and still has balance
+                if (settings.alarmConfig?.enabled && (sale.remainingBalance || 0) - amount > 0) {
+                    const days = settings.alarmConfig.days ?? 15;
+                    const alarmDate = new Date();
+                    alarmDate.setDate(alarmDate.getDate() + days);
+
+                    const newAlarm = {
+                        id: Date.now().toString(),
+                        date: alarmDate.toISOString(),
+                        clientName: sale.clientName || 'Cliente',
+                        playedCount: 0,
+                        isCompleted: false
+                    };
+                    updates.pendingAlarms = arrayUnion(newAlarm);
                 }
+
+                batch.update(customerRef, updates);
             }
 
             await batch.commit();
@@ -581,7 +605,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Error recording payment:', err);
             throw err;
         }
-    }, [sales, customers]);
+    }, [sales, settings]);
 
     const updateInstallmentDate = useCallback(async (saleId: string, installmentNumber: number, newDate: string) => {
         try {
@@ -617,6 +641,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             const batch = writeBatch(db);
             let remainingToApply = amount;
+            const paymentId = Date.now().toString(); // ID to group split payments
+            const dateStr = new Date().toISOString(); // Consistent timestamp
 
             for (const sale of pendingSales) {
                 if (remainingToApply <= 0) break;
@@ -627,10 +653,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const newPayment: PaymentDetails = {
                     method,
                     amount: canPayThisSale,
-                    date: new Date().toISOString(),
+                    date: dateStr,
+                    paymentId
                 };
-
-                const newRemaining = (sale.remainingBalance || 0) - canPayThisSale;
 
                 // If it has installment plan, update it too
                 let updatedInstallments = sale.installmentPlan?.installments;
@@ -642,10 +667,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                             installmentPayPool -= payAmount;
                             return {
                                 ...inst,
-                                amount: payAmount, // This is tricky, usually we'd want to keep original amount but status Paid
-                                // But if it's partial, we keep Pending? 
-                                // For simplicity if it covers full installment, mark Paid.
-                                status: payAmount >= inst.amount ? 'Paid' : 'Pending'
+                                amount: inst.amount - payAmount, // subtract from pending amount instead of overwriting it to payAmount
+                                status: (inst.amount - payAmount) <= 0.01 ? 'Paid' : 'Pending'
                             };
                         }
                         return inst;
@@ -653,20 +676,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
 
                 batch.update(saleRef, {
-                    payments: [...(sale.payments || []), newPayment],
-                    remainingBalance: newRemaining,
-                    status: newRemaining <= 0 ? 'Paid' : 'Pending',
+                    payments: arrayUnion(newPayment),
+                    remainingBalance: increment(-canPayThisSale),
+                    status: (sale.remainingBalance || 0) - canPayThisSale <= 0.01 ? 'Paid' : 'Pending',
                     ...(updatedInstallments && { 'installmentPlan.installments': updatedInstallments })
                 });
 
                 remainingToApply -= canPayThisSale;
             }
 
-            // Update customer balance
+            // Update customer balance ATOMICALLY and register alarm
             const customerRef = doc(db, COLLECTIONS.customers, customerId);
-            batch.update(customerRef, {
-                balance: Math.max(0, customer.balance - amount)
-            });
+            const customerUpdates: Record<string, unknown> = {
+                balance: increment(-amount)
+            };
+
+            // Register Alarm if enabled and still has balance
+            if (settings.alarmConfig?.enabled && (customer.balance - amount) > 0) {
+                const days = settings.alarmConfig.days ?? 15;
+                const alarmDate = new Date();
+                alarmDate.setDate(alarmDate.getDate() + days);
+
+                const newAlarm = {
+                    id: Date.now().toString(),
+                    date: alarmDate.toISOString(),
+                    clientName: customer.name || 'Cliente',
+                    playedCount: 0,
+                    isCompleted: false
+                };
+                customerUpdates.pendingAlarms = arrayUnion(newAlarm);
+            }
+
+            batch.update(customerRef, customerUpdates);
 
             await batch.commit();
             console.log('General payment applied successfully');
@@ -676,7 +717,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setError(`Error al registrar pago: ${err.message}`);
             throw err;
         }
-    }, [sales, customers]);
+    }, [sales, customers, settings]);
 
     const registerProductToCustomer = useCallback(async (customerId: string, product: Product) => {
         try {
@@ -806,6 +847,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setIsLoading(false);
         }
     }, [resetSales, resetCustomers, resetProducts]);
+
+    const updateAlarmStatus = useCallback(async (customerId: string, alarmId: string, updates: { playedCount?: number, isCompleted?: boolean }) => {
+        try {
+            const customer = customers.find(c => c.id === customerId);
+            if (!customer || !customer.pendingAlarms) return;
+
+            const updatedAlarms = customer.pendingAlarms.map(alarm =>
+                alarm.id === alarmId ? { ...alarm, ...updates } : alarm
+            );
+
+            const customerRef = doc(db, COLLECTIONS.customers, customerId);
+            await updateDoc(customerRef, {
+                pendingAlarms: updatedAlarms
+            });
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error updating alarm status:', err);
+        }
+    }, [customers]);
 
     // ────────────────────────────────────────────────
     // Provider
@@ -983,7 +1043,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [sales, products, customers]);
 
-    const restoreBackup = useCallback(async (backupData: Record<string, any>) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const restoreBackup = useCallback(async (backupData: any) => {
         try {
             setIsLoading(true);
             setError(null);
@@ -1053,6 +1114,167 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, [products, customers, sales, updateSettings]);
 
+    const updateGroupedPayment = useCallback(async (paymentId: string, updates: { method?: PaymentDetails['method'], amount?: number, date?: string }) => {
+        try {
+            console.log('--- Actualizando Pago Agrupado ---', paymentId);
+            const batch = writeBatch(db);
+            let totalOldAmount = 0;
+            let targetCustomerId = '';
+
+            const affectedSaleIds: string[] = [];
+            sales.forEach(sale => {
+                if (sale.payments) {
+                    const groupParts = sale.payments.filter(p => p.paymentId === paymentId);
+                    if (groupParts.length > 0) {
+                        affectedSaleIds.push(sale.id);
+                        totalOldAmount += groupParts.reduce((acc, p) => acc + p.amount, 0);
+                        targetCustomerId = sale.customerId || targetCustomerId;
+                    }
+                }
+            });
+
+            if (!targetCustomerId) throw new Error('No se encontró el cliente');
+
+            if (updates.amount === undefined || Math.abs(updates.amount - totalOldAmount) < 0.01) {
+                // Only method or date changed
+                sales.forEach(sale => {
+                    if (affectedSaleIds.includes(sale.id)) {
+                        const updatedPayments = sale.payments!.map(p => {
+                            if (p.paymentId === paymentId) {
+                                return {
+                                    ...p,
+                                    method: updates.method || p.method,
+                                    date: updates.date || p.date
+                                };
+                            }
+                            return p;
+                        });
+                        batch.update(doc(db, COLLECTIONS.sales, sale.id), { payments: updatedPayments });
+                    }
+                });
+            } else {
+                // Amount changed: Full Revert and Re-apply
+                // 1. Revert
+                sales.forEach(sale => {
+                    if (affectedSaleIds.includes(sale.id)) {
+                        const groupParts = sale.payments!.filter(p => p.paymentId === paymentId);
+                        const revertAmount = groupParts.reduce((acc, p) => acc + p.amount, 0);
+                        const updatedPayments = sale.payments!.filter(p => p.paymentId !== paymentId);
+                        const newRemaining = (sale.remainingBalance || 0) + revertAmount;
+
+                        batch.update(doc(db, COLLECTIONS.sales, sale.id), {
+                            payments: updatedPayments,
+                            remainingBalance: newRemaining,
+                            status: newRemaining <= 0.01 ? 'Paid' : 'Pending'
+                        });
+                    }
+                });
+
+                // 2. Re-apply
+                let remainingToApply = updates.amount;
+                const newMethod = updates.method || sales.flatMap(s => s.payments || []).find(p => p.paymentId === paymentId)?.method || 'Cash';
+                const newDate = updates.date || new Date().toISOString();
+
+                const pendingSales = sales
+                    .filter(s => s.customerId === targetCustomerId && s.type === 'Credit')
+                    .map(s => {
+                        if (affectedSaleIds.includes(s.id)) {
+                            const revertAmount = s.payments!.filter(p => p.paymentId === paymentId).reduce((acc, p) => acc + p.amount, 0);
+                            return {
+                                ...s,
+                                remainingBalance: (s.remainingBalance || 0) + revertAmount,
+                                payments: s.payments!.filter(p => p.paymentId !== paymentId)
+                            };
+                        }
+                        return s;
+                    })
+                    .filter(s => (s.remainingBalance || 0) > 0.01)
+                    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                for (const sale of pendingSales) {
+                    if (remainingToApply <= 0.001) break;
+                    const canPayThisSale = Math.min(remainingToApply, sale.remainingBalance || 0);
+                    const newPayment: PaymentDetails = {
+                        method: newMethod as PaymentDetails['method'],
+                        amount: canPayThisSale,
+                        date: newDate,
+                        paymentId
+                    };
+
+                    const updatedPayments = [...(sale.payments || []), newPayment];
+                    const newFinalRemaining = (sale.remainingBalance || 0) - canPayThisSale;
+
+                    batch.update(doc(db, COLLECTIONS.sales, sale.id), {
+                        payments: updatedPayments,
+                        remainingBalance: newFinalRemaining,
+                        status: newFinalRemaining <= 0.01 ? 'Paid' : 'Pending'
+                    });
+                    remainingToApply -= canPayThisSale;
+                }
+
+                // 3. Update customer balance
+                const balanceDiff = totalOldAmount - updates.amount;
+                batch.update(doc(db, COLLECTIONS.customers, targetCustomerId), {
+                    balance: increment(balanceDiff)
+                });
+            }
+
+            await batch.commit();
+            console.log('Pago agrupado actualizado con éxito');
+        } catch (error) {
+            console.error('Error updating grouped payment:', error);
+            setError('Error al actualizar el pago agrupado');
+            throw error;
+        }
+    }, [sales]);
+
+    const deleteGroupedPayment = useCallback(async (paymentId: string) => {
+        try {
+            console.log('--- Eliminando Pago Agrupado ---', paymentId);
+            const batch = writeBatch(db);
+            let totalToRevert = 0;
+            let targetCustomerId = '';
+
+            // 1. Iterate through all sales to find components of this payment
+            sales.forEach(sale => {
+                if (sale.payments) {
+                    const groupParts = sale.payments.filter(p => p.paymentId === paymentId);
+                    if (groupParts.length > 0) {
+                        const revertAmount = groupParts.reduce((acc, p) => acc + p.amount, 0);
+                        const updatedPayments = sale.payments.filter(p => p.paymentId !== paymentId);
+
+                        targetCustomerId = sale.customerId || targetCustomerId;
+                        totalToRevert += revertAmount;
+
+                        const saleRef = doc(db, COLLECTIONS.sales, sale.id);
+                        const newRemaining = (sale.remainingBalance || 0) + revertAmount;
+
+                        batch.update(saleRef, {
+                            payments: updatedPayments,
+                            remainingBalance: newRemaining,
+                            status: newRemaining <= 0.01 ? 'Paid' : 'Pending'
+                        });
+                    }
+                }
+            });
+
+            // 2. Revert customer balance
+            if (targetCustomerId) {
+                const customerRef = doc(db, COLLECTIONS.customers, targetCustomerId);
+                batch.update(customerRef, {
+                    balance: increment(totalToRevert)
+                });
+            }
+
+            await batch.commit();
+            console.log('Pago agrupado eliminado con éxito');
+        } catch (error: unknown) {
+            const err = error as Error;
+            console.error('Error deleting grouped payment:', err);
+            setError(`Error al eliminar pago: ${err.message}`);
+        }
+    }, [sales]);
+
     return (
         <DataContext.Provider value={{
             products,
@@ -1084,8 +1306,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             deletePaymentFromSale,
             updateSaleItemDetail,
             updatePaymentDetail,
+            updateGroupedPayment,
             clearSalesData,
             restoreBackup,
+            deleteGroupedPayment,
+            updateAlarmStatus,
             error,
             clearError,
         }}>

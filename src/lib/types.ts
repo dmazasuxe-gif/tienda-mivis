@@ -25,6 +25,7 @@ export interface PaymentDetails {
     method: 'Cash' | 'Card' | 'Transfer' | 'Yape' | 'Plin' | 'Other';
     amount: number;
     date: string; // ISO String
+    paymentId?: string; // Grouping ID
 }
 
 export interface Sale {
@@ -53,6 +54,14 @@ export interface Sale {
     };
 }
 
+export interface Alarm {
+    id: string;
+    date: string; // ISO String
+    clientName: string;
+    playedCount: number;
+    isCompleted: boolean;
+}
+
 export interface Customer {
     id: string;
     name: string;
@@ -65,6 +74,7 @@ export interface Customer {
         frequency: 'Daily' | 'Weekly' | 'Bi-weekly' | 'Monthly';
         nextDueDate: string;
     };
+    pendingAlarms?: Alarm[];
 }
 
 export interface StoreSettings {
@@ -73,6 +83,10 @@ export interface StoreSettings {
     tiktok: string;
     facebook: string;
     authorizedAdmins?: { username: string; password: string }[];
+    alarmConfig?: {
+        enabled: boolean;
+        days: number;
+    };
 }
 
 export interface AppData {

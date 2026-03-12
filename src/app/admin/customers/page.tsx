@@ -7,7 +7,7 @@ import { Customer, Product, PaymentDetails, Sale } from '@/lib/types';
 import {
     Users, DollarSign, Phone, Search,
     Plus, X, Loader2, Trash2, Package, ChevronLeft,
-    Check, ArrowRight, Smartphone, Wallet, Edit2, Tag
+    Check, ArrowRight, Smartphone, Wallet, Edit2, Tag, Heart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
@@ -26,7 +26,9 @@ export default function CustomersPage() {
         deletePaymentFromSale,
         updateSaleItemDetail,
         updatePaymentDetail,
-        processSale
+        updateGroupedPayment,
+        processSale,
+        deleteGroupedPayment
     } = useData();
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -57,6 +59,7 @@ export default function CustomersPage() {
         date?: string;
         itemIdx?: number;
         payIdx?: number;
+        paymentId?: string;
     } | null>(null);
 
     // Specific Discounting State
@@ -86,7 +89,7 @@ export default function CustomersPage() {
     const filteredCustomers = useMemo(() => {
         return customers.filter(c =>
             c.name.toLowerCase().includes(searchTerm.toLowerCase())
-        ).sort((a, b) => b.balance - a.balance);
+        ).sort((a, b) => a.name.localeCompare(b.name));
     }, [customers, searchTerm]);
 
     // Ledger items
@@ -104,12 +107,13 @@ export default function CustomersPage() {
             id: string; // saleId
             itemIdx?: number;
             payIdx?: number;
+            paymentId?: string; // Grouping ID for split payments
         }
 
-        const items: LedgerItem[] = [];
+        const rawItems: LedgerItem[] = [];
         sales.filter(s => s.customerId === currentCustomer.id).forEach(sale => {
             sale.items.forEach((item, idx) => {
-                items.push({
+                rawItems.push({
                     type: 'product',
                     name: item.productName,
                     price: item.salePrice,
@@ -122,23 +126,57 @@ export default function CustomersPage() {
 
             if (sale.payments) {
                 sale.payments.forEach((payment, idx) => {
-                    items.push({
+                    rawItems.push({
                         type: 'payment',
                         method: payment.method,
                         amount: payment.amount,
                         date: payment.date,
                         id: sale.id,
-                        payIdx: idx
+                        payIdx: idx,
+                        paymentId: payment.paymentId
                     });
                 });
             }
         });
 
-        return items.sort((a, b) => {
-            const timeA = new Date(a.date).getTime();
-            const timeB = new Date(b.date).getTime();
-            if (timeA !== timeB) return timeA - timeB;
-            return a.type === 'product' ? -1 : 1;
+        // Grouping split payments
+        const finalItems: LedgerItem[] = [];
+        const paymentGroups = new Map<string, LedgerItem>();
+
+        rawItems.forEach(item => {
+            if (item.type === 'payment' && item.paymentId) {
+                if (paymentGroups.has(item.paymentId)) {
+                    const existing = paymentGroups.get(item.paymentId)!;
+                    existing.amount = (existing.amount || 0) + (item.amount || 0);
+                    // Keep the date of the first part encountered (they should be identical anyway)
+                } else {
+                    const newItem = { ...item };
+                    paymentGroups.set(item.paymentId, newItem);
+                    finalItems.push(newItem);
+                }
+            } else {
+                finalItems.push(item);
+            }
+        });
+
+        return finalItems.sort((a, b) => {
+            // PRODUCTS FIRST, PAYMENTS AFTER
+            if (a.type !== b.type) {
+                return a.type === 'product' ? -1 : 1;
+            }
+            
+            // IF PRODUCTS: NEWER AT TOP (DESCENDING)
+            if (a.type === 'product') {
+                return new Date(b.date).getTime() - new Date(a.date).getTime();
+            }
+            
+            // IF PAYMENTS: SEQUENTIAL BY ENTRY (ONE BELOW THE OTHER)
+            // Use paymentId (timestamp) if available, otherwise fallback to date
+            if (a.paymentId && b.paymentId) {
+                return a.paymentId.localeCompare(b.paymentId);
+            }
+            
+            return new Date(a.date).getTime() - new Date(b.date).getTime();
         });
     }, [currentCustomer, sales]);
 
@@ -193,12 +231,14 @@ export default function CustomersPage() {
         finally { setIsProcessing(false); }
     };
 
-    const handleDeleteItem = async (item: { type: 'product' | 'payment', id: string, payIdx?: number }) => {
+    const handleDeleteItem = async (item: { type: 'product' | 'payment', id: string, payIdx?: number, paymentId?: string }) => {
         if (!window.confirm("¿Estás seguro de eliminar este registro?")) return;
         setIsProcessing(true);
         try {
             if (item.type === 'product') {
                 await deleteSale(item.id);
+            } else if (item.paymentId) {
+                await deleteGroupedPayment(item.paymentId);
             } else if (item.payIdx !== undefined) {
                 await deletePaymentFromSale(item.id, item.payIdx);
             }
@@ -216,7 +256,15 @@ export default function CustomersPage() {
                     salePrice: editingItem.value,
                     discount: editingItem.discount
                 });
+            } else if (editingItem.paymentId) {
+                // UPDATE GROUPED PAYMENT
+                await updateGroupedPayment(editingItem.paymentId, {
+                    method: editingItem.method,
+                    amount: editingItem.value,
+                    date: editingItem.date
+                });
             } else {
+                // UPDATE SINGLE PAYMENT
                 await updatePaymentDetail(editingItem.id, editingItem.payIdx!, {
                     method: editingItem.method,
                     amount: editingItem.value,
@@ -346,7 +394,13 @@ export default function CustomersPage() {
                                         <div className="flex flex-col gap-4 items-center w-full max-w-md">
                                             <input title="Nombre del Cliente" autoFocus type="text" placeholder="NOMBRE DEL CLIENTE" value={newCustForm.name} onChange={e => setNewCustForm({ ...newCustForm, name: e.target.value })} className="bg-white/10 border border-white/30 rounded-lg px-6 py-2 text-white text-center text-xl font-medium uppercase outline-none focus:border-white w-full placeholder:text-white/40" />
                                             <input title="Celular del Cliente" type="text" maxLength={9} placeholder="CELULAR (9 DÍGITOS)" value={newCustForm.contact} onChange={e => setNewCustForm({ ...newCustForm, contact: e.target.value.replace(/\D/g, '') })} className="bg-white/10 border border-white/30 rounded-lg px-6 py-2 text-white text-center text-sm outline-none focus:border-white w-full placeholder:text-white/40" />
-                                            <button onClick={handleFinalCreate} className="bg-white text-indigo-600 px-6 py-2 rounded-lg font-black hover:bg-gray-100 active:scale-95 transition-all mt-2">CONFIRMAR CREAR</button>
+                                            <button 
+                                                onClick={handleFinalCreate} 
+                                                disabled={isProcessing}
+                                                className="bg-white text-indigo-600 px-6 py-2 rounded-lg font-black hover:bg-gray-100 active:scale-95 disabled:opacity-50 transition-all mt-2"
+                                            >
+                                                {isProcessing ? "CREANDO..." : "CONFIRMAR CREAR"}
+                                            </button>
                                         </div>
                                     ) : (
                                         <div className="px-10 py-3 border-2 border-white/40 rounded-[2rem] bg-white/10 backdrop-blur-md">
@@ -370,19 +424,19 @@ export default function CustomersPage() {
                                             <p className="font-bold">Agregue productos o pagos haciendo clic en el (+)</p>
                                         </div>
                                     ) : (
-                                        ledgerItems.map((item) => (
-                                            <div key={item.id + (item.payIdx ?? item.itemIdx)} className="flex gap-3 items-center">
+                                        ledgerItems.map((item, index) => (
+                                            <div key={`${item.id}-${item.type}-${item.itemIdx ?? ''}-${item.payIdx ?? ''}-${index}`} className="flex gap-3 items-center">
                                                 <div className="flex-1 flex gap-3">
                                                     <div className="bg-white/10 border border-white/20 px-6 py-4 rounded-2xl flex-1 min-w-0 flex items-center justify-between backdrop-blur-sm">
                                                         <div className="flex items-center gap-3">
                                                             <p className="text-white text-sm font-black truncate tracking-wide uppercase">
-                                                                {item.type === 'product' ? item.name : `PAGO CON ${item.method?.toUpperCase()} (${new Date(item.date).toLocaleDateString('es-PE')})`}
+                                                                {item.type === 'product' ? item.name : `PAGO CON ${item.method?.toUpperCase()} (${item.date.split('T')[0].split('-').reverse().map(v => parseInt(v)).join('/')})`}
                                                             </p>
-                                                            {item.type === 'product' && item.discount && item.discount > 0 && (
+                                                            {item.type === 'product' && item.discount && item.discount > 0 ? (
                                                                 <span className="bg-rose-500 text-white px-2 py-0.5 rounded-lg text-[10px] font-black flex items-center gap-1 shadow-sm">
                                                                     <Tag size={10} /> Desc. S/ {item.discount.toFixed(2)}
                                                                 </span>
-                                                            )}
+                                                            ) : null}
                                                         </div>
                                                         <div className="flex gap-1.5">
                                                             {/* New Direct Discount Button for Products */}
@@ -401,6 +455,7 @@ export default function CustomersPage() {
                                                                     <Tag size={14} />
                                                                 </button>
                                                             )}
+                                                            {/* Edit Button - ALWAYS SHOW */}
                                                             <button
                                                                 title="Editar"
                                                                 onClick={() => setEditingItem({
@@ -412,7 +467,8 @@ export default function CustomersPage() {
                                                                     method: item.method,
                                                                     date: item.date,
                                                                     itemIdx: item.itemIdx,
-                                                                    payIdx: item.payIdx
+                                                                    payIdx: item.payIdx,
+                                                                    paymentId: item.paymentId
                                                                 })}
                                                                 className="p-2 bg-white/20 text-white rounded-xl hover:bg-white/30 backdrop-blur-md transition-all flex items-center justify-center"
                                                             >
@@ -420,7 +476,7 @@ export default function CustomersPage() {
                                                             </button>
                                                             <button
                                                                 title="Eliminar"
-                                                                onClick={() => handleDeleteItem({ type: item.type, id: item.id, payIdx: item.payIdx })}
+                                                                onClick={() => handleDeleteItem({ type: item.type, id: item.id, payIdx: item.payIdx, paymentId: item.paymentId })}
                                                                 className="p-2 text-white/20 hover:text-rose-500 transition-colors"
                                                             >
                                                                 <Trash2 size={14} />
@@ -493,14 +549,25 @@ export default function CustomersPage() {
                                     <p className="font-black text-[10px] uppercase tracking-[0.2em] opacity-60 mb-4">{isCreating ? "DEUDA GLOBAL" : "TOTAL DEUDA"}</p>
                                     <h4 className="text-5xl font-black mb-10 tracking-tighter">S/ {(isCreating ? totalConsolidado : (currentCustomer?.balance ?? 0)).toFixed(2)}</h4>
                                     {!isCreating && currentCustomer && (
-                                        <button onClick={() => {
-                                            const productsList = ledgerItems.filter(i => i.type === 'product').map(i => `• ${i.name}: S/ ${i.price?.toFixed(2)} ${i.discount ? `(Desc: S/ ${i.discount.toFixed(2)})` : ''}`).join('\n');
-                                            const paymentsList = ledgerItems.filter(i => i.type === 'payment').map(i => `✓ Pago (${i.method?.toLowerCase()}): S/ ${i.amount?.toFixed(2)} [${new Date(i.date).toLocaleDateString()}]`).join('\n');
-                                            const msg = `Hola *${currentCustomer.name}*, este es tu resumen de cuenta:\n\n*PRODUCTOS:*\n${productsList || 'Ninguno'}\n\n*PAGOS:*\n${paymentsList || 'Ninguno'}\n\n*SALDO PENDIENTE:* S/ ${currentCustomer.balance.toFixed(2)}`;
-                                            window.open(`https://wa.me/51${currentCustomer.contact}?text=${encodeURIComponent(msg)}`, '_blank');
-                                        }} className="w-full py-5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all border border-white/20 shadow-xl">
-                                            <Smartphone size={18} /> ENVIAR WHATSAPP
-                                        </button>
+                                        <div className="space-y-3">
+                                            <button onClick={() => {
+                                                const productsList = ledgerItems.filter(i => i.type === 'product').map(i => `• ${i.name}: S/ ${i.price?.toFixed(2)} ${i.discount ? `(Desc: S/ ${i.discount.toFixed(2)})` : ''}`).join('\n');
+                                                const paymentsList = ledgerItems.filter(i => i.type === 'payment').map(i => `✓ Pago (${i.method?.toLowerCase()}): S/ ${i.amount?.toFixed(2)} [${i.date.split('T')[0].split('-').reverse().map(v => parseInt(v)).join('/')}]`).join('\n');
+                                                const msg = `Hola *${currentCustomer.name}*, este es tu resumen de cuenta:\n\n*PRODUCTOS:*\n${productsList || 'Ninguno'}\n\n*PAGOS:*\n${paymentsList || 'Ninguno'}\n\n*SALDO PENDIENTE:* S/ ${currentCustomer.balance.toFixed(2)}`;
+                                                window.open(`https://wa.me/51${currentCustomer.contact}?text=${encodeURIComponent(msg)}`, '_blank');
+                                            }} className="w-full py-5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all border border-white/20 shadow-xl">
+                                                <Smartphone size={18} /> ENVIAR WHATSAPP
+                                            </button>
+                                            
+                                            {currentCustomer.balance <= 0 && (
+                                                <button onClick={() => {
+                                                    const msg = `Hola 😊 *${currentCustomer.name}*, muchas gracias por haber culminado tu pago💵\n🤩Agradecemos mucho tu confianza. ¡Te esperamos pronto para que sigas disfrutando de nuestros productos!`;
+                                                    window.open(`https://wa.me/51${currentCustomer.contact}?text=${encodeURIComponent(msg)}`, '_blank');
+                                                }} className="w-full py-5 bg-emerald-500/20 hover:bg-emerald-500/30 backdrop-blur-md rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all border border-emerald-500/30 text-emerald-100 shadow-xl animate-pulse">
+                                                    <Heart size={18} fill="currentColor" /> ENVIAR AGRADECIMIENTO
+                                                </button>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -553,7 +620,16 @@ export default function CustomersPage() {
                                     <div className="space-y-6">
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Nombre del Producto</label>
-                                            <input title="Producto Manual Nom" autoFocus type="text" value={manualProduct.name} onChange={e => setManualProduct({ ...manualProduct, name: e.target.value })} placeholder="EJ: VESTIDO ANTIGUO" className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-bold uppercase outline-none focus:ring-2 focus:ring-violet-500" />
+                                            <input 
+                                                title="Producto Manual Nom" 
+                                                autoFocus 
+                                                type="text" 
+                                                value={manualProduct.name} 
+                                                onChange={e => setManualProduct({ ...manualProduct, name: e.target.value })} 
+                                                placeholder="EJ: VESTIDO ANTIGUO" 
+                                                className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl font-bold uppercase outline-none focus:ring-2 focus:ring-violet-500" 
+                                                autoComplete="on"
+                                            />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Precio de Venta S/</label>
@@ -640,11 +716,11 @@ export default function CustomersPage() {
                                             <input
                                                 title="Editar Fecha"
                                                 type="date"
-                                                value={editingItem.date ? new Date(editingItem.date).toISOString().split('T')[0] : ''}
+                                                value={editingItem.date ? editingItem.date.split('T')[0] : ''}
                                                 onChange={e => {
-                                                    const date = new Date(e.target.value);
-                                                    // Ensure we keep the local date correctly
-                                                    setEditingItem({ ...editingItem, date: date.toISOString() });
+                                                    const [y, m, d] = e.target.value.split('-').map(Number);
+                                                    const localDate = new Date(y, m - 1, d, 12, 0, 0);
+                                                    setEditingItem({ ...editingItem, date: localDate.toISOString() });
                                                 }}
                                                 className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600"
                                             />
