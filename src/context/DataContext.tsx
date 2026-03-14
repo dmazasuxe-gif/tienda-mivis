@@ -19,7 +19,6 @@ import {
     increment,
     arrayUnion,
     FieldValue,
-    limit,
 } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
@@ -187,9 +186,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         };
 
-        // 1. Sales listener (Limit to top 100 recent)
+        // 1. Sales listener (No limit - loads all sales to avoid losing historical customer data)
         const unsubSales = onSnapshot(
-            query(collection(db, COLLECTIONS.sales), orderBy('date', 'desc'), limit(100)),
+            query(collection(db, COLLECTIONS.sales), orderBy('date', 'desc')),
             (snapshot) => {
                 const items: Sale[] = snapshot.docs.map(doc => ({
                     ...doc.data(),
@@ -204,9 +203,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         );
 
-        // 2. Customers listener (Limit to 100)
+        // 2. Customers listener (No limit - loads all customers)
         const unsubCustomers = onSnapshot(
-            query(collection(db, COLLECTIONS.customers), limit(100)),
+            collection(db, COLLECTIONS.customers),
             (snapshot) => {
                 const items: Customer[] = snapshot.docs.map(doc => ({
                     ...doc.data(),
