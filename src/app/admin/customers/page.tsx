@@ -28,7 +28,8 @@ export default function CustomersPage() {
         updatePaymentDetail,
         updateGroupedPayment,
         processSale,
-        deleteGroupedPayment
+        deleteGroupedPayment,
+        calculateCustomerDebt
     } = useData();
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -80,10 +81,26 @@ export default function CustomersPage() {
         return customers.find(c => c.id === selectedCustomer.id) || selectedCustomer;
     }, [customers, selectedCustomer]);
 
+    // Dynamic reliable customer debt
+    const currentCustomerDebt = useMemo(() => {
+        if (!currentCustomer) return 0;
+        const rawBalance = Number(currentCustomer.balance);
+        if (!isNaN(rawBalance) && rawBalance > 0) {
+            return rawBalance;
+        }
+        const fromSales = calculateCustomerDebt(currentCustomer.id);
+        return fromSales > 0 ? fromSales : (!isNaN(rawBalance) ? rawBalance : 0);
+    }, [currentCustomer, calculateCustomerDebt]);
+
     // Total Consolidado (Sum of all debt)
     const totalConsolidado = useMemo(() => {
-        return customers.reduce((acc, c) => acc + c.balance, 0);
-    }, [customers]);
+        return customers.reduce((acc, c) => {
+            const rawBalance = Number(c.balance);
+            if (!isNaN(rawBalance) && rawBalance > 0) return acc + rawBalance;
+            const fromSales = calculateCustomerDebt(c.id);
+            return acc + (fromSales > 0 ? fromSales : (!isNaN(rawBalance) ? rawBalance : 0));
+        }, 0);
+    }, [customers, calculateCustomerDebt]);
 
     // Filtered customers
     const filteredCustomers = useMemo(() => {
@@ -250,24 +267,27 @@ export default function CustomersPage() {
         if (!editingItem) return;
         setIsProcessing(true);
         try {
+            const safeValue = isNaN(Number(editingItem.value)) ? 0 : Number(editingItem.value);
+            const safeDiscount = isNaN(Number(editingItem.discount)) ? 0 : Number(editingItem.discount);
+
             if (editingItem.type === 'product') {
                 await updateSaleItemDetail(editingItem.id, editingItem.itemIdx!, {
                     productName: editingItem.name,
-                    salePrice: editingItem.value,
-                    discount: editingItem.discount
+                    salePrice: safeValue,
+                    discount: safeDiscount
                 });
             } else if (editingItem.paymentId) {
                 // UPDATE GROUPED PAYMENT
                 await updateGroupedPayment(editingItem.paymentId, {
                     method: editingItem.method,
-                    amount: editingItem.value,
+                    amount: safeValue,
                     date: editingItem.date
                 });
             } else {
                 // UPDATE SINGLE PAYMENT
                 await updatePaymentDetail(editingItem.id, editingItem.payIdx!, {
                     method: editingItem.method,
-                    amount: editingItem.value,
+                    amount: safeValue,
                     date: editingItem.date
                 });
             }
@@ -280,8 +300,9 @@ export default function CustomersPage() {
         if (!discountingItem) return;
         setIsProcessing(true);
         try {
+            const safeDiscount = isNaN(Number(discountingItem.discount)) ? 0 : Number(discountingItem.discount);
             await updateSaleItemDetail(discountingItem.id, discountingItem.itemIdx, {
-                discount: discountingItem.discount
+                discount: safeDiscount
             });
             setDiscountingItem(null);
         } catch (err) { console.error(err); }
@@ -290,9 +311,13 @@ export default function CustomersPage() {
 
     const handleRegisterManualProduct = async () => {
         if (!currentCustomer || !manualProduct.name.trim() || !manualProduct.price) return;
+        const priceVal = parseFloat(manualProduct.price);
+        if (isNaN(priceVal) || priceVal <= 0) {
+            alert("Por favor ingresa un precio válido.");
+            return;
+        }
         setIsProcessing(true);
         try {
-            const priceVal = parseFloat(manualProduct.price);
             const saleData: Omit<Sale, 'id'> = {
                 items: [{
                     productId: 'manual-' + Date.now(),
@@ -362,11 +387,19 @@ export default function CustomersPage() {
                                         <ArrowRight className="text-gray-300 group-hover:text-violet-400" />
                                     </div>
                                     <div className="bg-gray-50 rounded-2xl p-5 flex justify-between items-center">
-                                        <div>
-                                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Saldo Pendiente</p>
-                                            <p className={clsx("text-2xl font-black", customer.balance > 0 ? "text-rose-500" : "text-emerald-500")}>S/ {customer.balance.toFixed(2)}</p>
-                                        </div>
-                                        <div className={clsx("p-3 rounded-xl", customer.balance > 0 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600")}><DollarSign size={20} /></div>
+                                        {(() => {
+                                            const rawBalance = Number(customer.balance);
+                                            const debt = (!isNaN(rawBalance) && rawBalance > 0) ? rawBalance : calculateCustomerDebt(customer.id);
+                                            return (
+                                                <>
+                                                    <div>
+                                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Saldo Pendiente</p>
+                                                        <p className={clsx("text-2xl font-black", debt > 0 ? "text-rose-500" : "text-emerald-500")}>S/ {debt.toFixed(2)}</p>
+                                                    </div>
+                                                    <div className={clsx("p-3 rounded-xl", debt > 0 ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600")}><DollarSign size={20} /></div>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                 </motion.div>
                             ))}
@@ -500,7 +533,7 @@ export default function CustomersPage() {
                                         <p className="text-white font-black tracking-widest text-sm uppercase text-center">SUMA TOTAL DE DEUDA</p>
                                     </div>
                                     <div className="bg-white text-indigo-600 px-8 py-5 rounded-[2rem] w-48 flex items-center justify-center shadow-xl">
-                                        <p className="font-black text-2xl tracking-tighter">S/ {currentCustomer?.balance.toFixed(2) || '0.00'}</p>
+                                        <p className="font-black text-2xl tracking-tighter">S/ {currentCustomerDebt.toFixed(2)}</p>
                                     </div>
                                 </div>
 
@@ -537,8 +570,8 @@ export default function CustomersPage() {
                                         </div>
                                         <div className="pt-6 border-t border-gray-50 flex justify-between items-center">
                                             <p className="text-gray-400 font-black text-[10px] uppercase tracking-widest">Estado</p>
-                                            <span className={clsx("px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest", currentCustomer.balance > 0 ? "bg-rose-50 text-rose-500 shadow-sm" : "bg-emerald-50 text-emerald-500 shadow-sm")}>
-                                                {currentCustomer.balance > 0 ? "CON DEUDA" : "AL DÍA"}
+                                            <span className={clsx("px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest", currentCustomerDebt > 0 ? "bg-rose-50 text-rose-500 shadow-sm" : "bg-emerald-50 text-emerald-500 shadow-sm")}>
+                                                {currentCustomerDebt > 0 ? "CON DEUDA" : "AL DÍA"}
                                             </span>
                                         </div>
                                     </div>
@@ -547,19 +580,19 @@ export default function CustomersPage() {
                                 <div className="bg-gradient-to-br from-violet-600 via-indigo-600 to-indigo-700 p-8 rounded-[3rem] text-white shadow-2xl shadow-indigo-100 relative overflow-hidden group">
                                     <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:bg-white/20 transition-all duration-500"></div>
                                     <p className="font-black text-[10px] uppercase tracking-[0.2em] opacity-60 mb-4">{isCreating ? "DEUDA GLOBAL" : "TOTAL DEUDA"}</p>
-                                    <h4 className="text-5xl font-black mb-10 tracking-tighter">S/ {(isCreating ? totalConsolidado : (currentCustomer?.balance ?? 0)).toFixed(2)}</h4>
+                                    <h4 className="text-5xl font-black mb-10 tracking-tighter">S/ {(isCreating ? totalConsolidado : currentCustomerDebt).toFixed(2)}</h4>
                                     {!isCreating && currentCustomer && (
                                         <div className="space-y-3">
                                             <button onClick={() => {
                                                 const productsList = ledgerItems.filter(i => i.type === 'product').map(i => `• ${i.name}: S/ ${i.price?.toFixed(2)} ${i.discount ? `(Desc: S/ ${i.discount.toFixed(2)})` : ''}`).join('\n');
                                                 const paymentsList = ledgerItems.filter(i => i.type === 'payment').map(i => `✓ Pago (${i.method?.toLowerCase()}): S/ ${i.amount?.toFixed(2)} [${i.date.split('T')[0].split('-').reverse().map(v => parseInt(v)).join('/')}]`).join('\n');
-                                                const msg = `Hola *${currentCustomer.name}*, este es tu resumen de cuenta:\n\n*PRODUCTOS:*\n${productsList || 'Ninguno'}\n\n*PAGOS:*\n${paymentsList || 'Ninguno'}\n\n*SALDO PENDIENTE:* S/ ${currentCustomer.balance.toFixed(2)}`;
+                                                const msg = `Hola *${currentCustomer.name}*, este es tu resumen de cuenta:\n\n*PRODUCTOS:*\n${productsList || 'Ninguno'}\n\n*PAGOS:*\n${paymentsList || 'Ninguno'}\n\n*SALDO PENDIENTE:* S/ ${currentCustomerDebt.toFixed(2)}`;
                                                 window.open(`https://wa.me/51${currentCustomer.contact}?text=${encodeURIComponent(msg)}`, '_blank');
                                             }} className="w-full py-5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all border border-white/20 shadow-xl">
                                                 <Smartphone size={18} /> ENVIAR WHATSAPP
                                             </button>
                                             
-                                            {currentCustomer.balance <= 0 && (
+                                            {currentCustomerDebt <= 0 && (
                                                 <button onClick={() => {
                                                     const msg = `Hola 😊 *${currentCustomer.name}*, muchas gracias por haber culminado tu pago💵\n🤩Agradecemos mucho tu confianza. ¡Te esperamos pronto para que sigas disfrutando de nuestros productos!`;
                                                     window.open(`https://wa.me/51${currentCustomer.contact}?text=${encodeURIComponent(msg)}`, '_blank');
@@ -687,11 +720,17 @@ export default function CustomersPage() {
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Precio S/</label>
-                                                <input title="Editar Precio" type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
+                                                <input title="Editar Precio" type="number" value={editingItem.value !== undefined && !isNaN(editingItem.value) ? editingItem.value : ''} onChange={e => {
+                                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                                    setEditingItem({ ...editingItem, value: isNaN(val) ? 0 : val });
+                                                }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-sm outline-none focus:bg-white focus:border-indigo-100 transition-all" />
                                             </div>
                                             <div className="space-y-2">
                                                 <label className="text-[10px] font-black uppercase text-rose-400 ml-2 tracking-widest">Descuento S/</label>
-                                                <input title="Editar Descuento" type="number" value={editingItem.discount || ''} onChange={e => setEditingItem({ ...editingItem, discount: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-rose-50 border border-transparent text-rose-600 rounded-[1.5rem] font-black text-sm outline-none focus:bg-rose-100 focus:border-rose-200 transition-all" />
+                                                <input title="Editar Descuento" type="number" value={editingItem.discount !== undefined && !isNaN(editingItem.discount) ? editingItem.discount : ''} onChange={e => {
+                                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                                    setEditingItem({ ...editingItem, discount: isNaN(val) ? 0 : val });
+                                                }} className="w-full px-6 py-4 bg-rose-50 border border-transparent text-rose-600 rounded-[1.5rem] font-black text-sm outline-none focus:bg-rose-100 focus:border-rose-200 transition-all" />
                                             </div>
                                         </div>
                                     </>
@@ -709,7 +748,10 @@ export default function CustomersPage() {
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Monto Pagado S/</label>
-                                            <input title="Editar Monto" type="number" value={editingItem.value || ''} onChange={e => setEditingItem({ ...editingItem, value: parseFloat(e.target.value) })} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-lg outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600" />
+                                            <input title="Editar Monto" type="number" value={editingItem.value !== undefined && !isNaN(editingItem.value) ? editingItem.value : ''} onChange={e => {
+                                                const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                                setEditingItem({ ...editingItem, value: isNaN(val) ? 0 : val });
+                                            }} className="w-full px-6 py-4 bg-gray-50 border border-transparent rounded-[1.5rem] font-black text-lg outline-none focus:bg-white focus:border-indigo-100 transition-all text-indigo-600" />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black uppercase text-gray-400 ml-2 tracking-widest">Fecha del Pago</label>
@@ -748,7 +790,10 @@ export default function CustomersPage() {
                                 <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest truncate">{discountingItem.name}</p>
                             </div>
                             <div className="space-y-6">
-                                <div className="bg-rose-50 border-2 border-rose-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-rose-100 transition-all"><span className="text-rose-300 mr-3">S/</span><input autoFocus type="number" value={discountingItem.discount || ''} onChange={(e) => setDiscountingItem({ ...discountingItem, discount: parseFloat(e.target.value) || 0 })} className="w-full bg-transparent outline-none text-rose-600" /></div>
+                                <div className="bg-rose-50 border-2 border-rose-50 rounded-[2rem] flex items-center px-6 py-5 text-3xl font-black focus-within:border-rose-100 transition-all"><span className="text-rose-300 mr-3">S/</span><input autoFocus type="number" value={discountingItem.discount !== undefined && !isNaN(discountingItem.discount) ? discountingItem.discount : ''} onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                                    setDiscountingItem({ ...discountingItem, discount: isNaN(val) ? 0 : val });
+                                }} className="w-full bg-transparent outline-none text-rose-600" /></div>
                                 <button onClick={handleApplyDiscount} disabled={isProcessing} className="w-full py-5 bg-rose-600 text-white rounded-2xl font-black text-lg tracking-tight flex items-center justify-center gap-3 shadow-xl shadow-rose-200 active:scale-95 transition-all"> {isProcessing ? <Loader2 className="animate-spin" /> : <><Check size={24} strokeWidth={3} /> APLICAR</>} </button>
                                 <button onClick={() => setDiscountingItem(null)} className="w-full py-2 text-gray-400 font-bold uppercase text-[10px] tracking-[0.3em]">Cerrar</button>
                             </div>

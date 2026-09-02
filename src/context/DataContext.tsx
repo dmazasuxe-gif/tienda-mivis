@@ -64,6 +64,7 @@ interface DataContextType extends AppData {
     restoreBackup: (backupData: Record<string, unknown>) => Promise<void>;
     deleteGroupedPayment: (paymentId: string) => Promise<void>;
     updateAlarmStatus: (customerId: string, alarmId: string, updates: { playedCount?: number, isCompleted?: boolean }) => Promise<void>;
+    calculateCustomerDebt: (customerId: string) => number;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -78,6 +79,26 @@ const COLLECTIONS = {
     customers: 'customers',
     settings: 'settings',
 } as const;
+
+export const computeCustomerDebtFromSales = (customerId: string, salesList: Sale[]): number => {
+    const custSales = salesList.filter(s => s.customerId === customerId);
+    if (!custSales.length) return 0;
+
+    return custSales.reduce((acc, sale) => {
+        if (sale.type === 'Credit') {
+            const remaining = Number(sale.remainingBalance);
+            if (!isNaN(remaining)) {
+                return acc + Math.max(0, remaining);
+            }
+            const itemsSum = (sale.items || []).reduce((sum, it) => sum + ((Number(it.salePrice) || 0) * (Number(it.quantity) || 1)), 0);
+            const discount = Number(sale.discount) || 0;
+            const saleTotal = (typeof sale.total === 'number' && !isNaN(sale.total)) ? sale.total : Math.max(0, itemsSum - discount);
+            const paymentsSum = (sale.payments || []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+            return acc + Math.max(0, saleTotal - paymentsSum);
+        }
+        return acc;
+    }, 0);
+};
 
 // ============================================================
 // Provider
@@ -207,10 +228,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const unsubCustomers = onSnapshot(
             collection(db, COLLECTIONS.customers),
             (snapshot) => {
-                const items: Customer[] = snapshot.docs.map(doc => ({
-                    ...doc.data(),
-                    id: doc.id,
-                } as Customer));
+                const items: Customer[] = snapshot.docs.map(doc => {
+                    const data = doc.data();
+                    const rawBalance = Number(data.balance);
+                    return {
+                        ...data,
+                        id: doc.id,
+                        balance: isNaN(rawBalance) ? 0 : rawBalance,
+                    } as Customer;
+                });
                 setCustomers(items);
                 checkReady();
             },
@@ -225,6 +251,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             unsubCustomers();
         };
     }, [user]);
+
+    // Calculate customer debt dynamically from sales
+    const calculateCustomerDebt = useCallback((customerId: string): number => {
+        return computeCustomerDebtFromSales(customerId, sales);
+    }, [sales]);
+
+    // Auto-heal customers with NaN balance in Firestore
+    useEffect(() => {
+        if (!user || isLoading || !sales.length || !customers.length) return;
+
+        customers.forEach(customer => {
+            const rawBalance = Number(customer.balance);
+            if (isNaN(rawBalance)) {
+                const realBalance = computeCustomerDebtFromSales(customer.id, sales);
+                console.log(`Auto-healing corrupted balance for customer ${customer.name} (${customer.id}): S/ ${realBalance}`);
+                const customerRef = doc(db, COLLECTIONS.customers, customer.id);
+                updateDoc(customerRef, { balance: realBalance }).catch(err => {
+                    console.error(`Error auto-healing customer balance for ${customer.id}:`, err);
+                });
+            }
+        });
+    }, [user, isLoading, sales, customers]);
 
     // ────────────────────────────────────────────────
     // Settings Operations
@@ -344,7 +392,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 };
 
                 if (saleData.type === 'Credit') {
-                    updates.balance = increment(saleData.remainingBalance || 0);
+                    const addBalance = Number(saleData.remainingBalance);
+                    updates.balance = increment(!isNaN(addBalance) ? addBalance : 0);
                 }
 
                 batch.update(customerRef, updates);
@@ -380,11 +429,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // 2. Revert customer balance if credit sale
             if (sale.type === 'Credit' && sale.customerId) {
                 const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
-                batch.update(customerRef, {
-                    balance: increment(-(sale.remainingBalance || 0))
-                });
-                // Note: We don't strictly need to remove from history as it's a log, 
-                // but we could use arrayRemove if needed.
+                const remaining = Number(sale.remainingBalance);
+                const safeRemaining = !isNaN(remaining) ? remaining : 0;
+                const customer = customers.find(c => c.id === sale.customerId);
+                const currentBalance = customer ? Number(customer.balance) : NaN;
+                if (isNaN(currentBalance)) {
+                    const remainingSales = sales.filter(s => s.id !== saleId);
+                    const realBalance = computeCustomerDebtFromSales(sale.customerId, remainingSales);
+                    batch.update(customerRef, { balance: realBalance });
+                } else {
+                    batch.update(customerRef, {
+                        balance: increment(-safeRemaining)
+                    });
+                }
             }
 
             // 3. Delete the sale document
@@ -536,8 +593,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
                 const customer = customers.find(c => c.id === sale.customerId);
                 if (customer) {
+                    const currentBalance = Number(customer.balance);
+                    const baseBalance = isNaN(currentBalance) ? calculateCustomerDebt(customer.id) : currentBalance;
+                    const safeAmount = Number(amountToReverse) || 0;
                     batch.update(customerRef, {
-                        balance: customer.balance + amountToReverse
+                        balance: baseBalance + safeAmount
                     });
                 }
             }
@@ -575,9 +635,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Update customer balance ATOMICALLY and register alarm
             if (sale.customerId) {
                 const customerRef = doc(db, COLLECTIONS.customers, sale.customerId);
-                const updates: Record<string, unknown> = {
-                    balance: increment(-amount),
-                };
+                const customer = customers.find(c => c.id === sale.customerId);
+                const currentBalance = customer ? Number(customer.balance) : NaN;
+                const safeAmount = Number(amount) || 0;
+                const updates: Record<string, unknown> = isNaN(currentBalance)
+                    ? { balance: Math.max(0, calculateCustomerDebt(sale.customerId) - safeAmount) }
+                    : { balance: increment(-safeAmount) };
 
                 // Register Alarm if enabled and still has balance
                 if (settings.alarmConfig?.enabled && (sale.remainingBalance || 0) - amount > 0) {
@@ -686,9 +749,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // Update customer balance ATOMICALLY and register alarm
             const customerRef = doc(db, COLLECTIONS.customers, customerId);
-            const customerUpdates: Record<string, unknown> = {
-                balance: increment(-amount)
-            };
+            const currentCustomerBalance = Number(customer.balance);
+            const safePaymentAmount = Number(amount) || 0;
+            const customerUpdates: Record<string, unknown> = isNaN(currentCustomerBalance)
+                ? { balance: Math.max(0, calculateCustomerDebt(customerId) - safePaymentAmount) }
+                : { balance: increment(-safePaymentAmount) };
 
             // Register Alarm if enabled and still has balance
             if (settings.alarmConfig?.enabled && (customer.balance - amount) > 0) {
@@ -781,9 +846,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return acc + (s.total - calculatedCost);
         }, 0);
 
-        const pendingReceivables = customers.reduce((acc, c) => acc + c.balance, 0);
+        const pendingReceivables = customers.reduce((acc, c) => {
+            const b = Number(c.balance);
+            return acc + (!isNaN(b) && b > 0 ? b : calculateCustomerDebt(c.id));
+        }, 0);
         return { inventoryValue, totalSales, totalProfit, pendingReceivables };
-    }, [products, sales, customers]);
+    }, [products, sales, customers, calculateCustomerDebt]);
 
     // ────────────────────────────────────────────────
     // System Reset Operations
@@ -900,8 +968,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const customer = customers.find(c => c.id === sale.customerId);
                 if (customer) {
                     const customerRef = doc(db, COLLECTIONS.customers, customer.id);
+                    const currentCustomerBalance = Number(customer.balance);
+                    const baseBalance = isNaN(currentCustomerBalance) ? calculateCustomerDebt(customer.id) : currentCustomerBalance;
+                    const safeAmount = Number(payment.amount) || 0;
                     batch.update(customerRef, {
-                        balance: customer.balance + payment.amount
+                        balance: baseBalance + safeAmount
                     });
                 }
             }
@@ -925,12 +996,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const saleRef = doc(db, COLLECTIONS.sales, saleId);
 
             const updatedItems = [...sale.items];
-            const oldPrice = item.salePrice;
-            const newPrice = updates.salePrice !== undefined ? updates.salePrice : oldPrice;
+            const oldPrice = Number(item.salePrice) || 0;
+            const newPrice = updates.salePrice !== undefined && !isNaN(Number(updates.salePrice)) ? Number(updates.salePrice) : oldPrice;
             const newName = updates.productName !== undefined ? updates.productName : item.productName;
 
-            const oldDiscount = sale.discount || 0;
-            const newDiscount = updates.discount !== undefined ? updates.discount : oldDiscount;
+            const oldDiscount = Number(sale.discount) || 0;
+            const newDiscount = updates.discount !== undefined && !isNaN(Number(updates.discount)) ? Number(updates.discount) : oldDiscount;
 
             updatedItems[itemIdx] = {
                 ...item,
@@ -940,11 +1011,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             const itemDiff = newPrice - oldPrice;
             const discountDiff = newDiscount - oldDiscount;
-            const totalDiff = itemDiff - discountDiff;
+            const rawTotalDiff = itemDiff - discountDiff;
+            const totalDiff = isNaN(rawTotalDiff) ? 0 : rawTotalDiff;
 
-            const newTotal = sale.total + totalDiff;
-            const newRemaining = (sale.remainingBalance || 0) + totalDiff;
-            const newProfit = sale.profit + totalDiff;
+            const currentTotal = Number(sale.total) || 0;
+            const currentRemaining = Number(sale.remainingBalance) || 0;
+            const currentProfit = Number(sale.profit) || 0;
+
+            const newTotal = Math.max(0, currentTotal + totalDiff);
+            const newRemaining = Math.max(0, currentRemaining + totalDiff);
+            const newProfit = currentProfit + totalDiff;
 
             batch.update(saleRef, {
                 items: updatedItems,
@@ -952,15 +1028,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 discount: newDiscount,
                 remainingBalance: newRemaining,
                 profit: newProfit,
-                status: newRemaining <= 0 ? 'Paid' : 'Pending'
+                status: newRemaining <= 0.01 ? 'Paid' : 'Pending'
             });
 
             if (sale.customerId) {
                 const customer = customers.find(c => c.id === sale.customerId);
                 if (customer) {
                     const customerRef = doc(db, COLLECTIONS.customers, customer.id);
+                    const currentCustomerBalance = Number(customer.balance);
+                    const baseBalance = isNaN(currentCustomerBalance) ? calculateCustomerDebt(customer.id) : currentCustomerBalance;
                     batch.update(customerRef, {
-                        balance: Math.max(0, customer.balance + totalDiff)
+                        balance: Math.max(0, baseBalance + totalDiff)
                     });
                 }
             }
@@ -984,8 +1062,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const saleRef = doc(db, COLLECTIONS.sales, saleId);
 
             const updatedPayments = [...sale.payments];
-            const oldAmount = updatedPayments[payIdx].amount;
-            const newAmount = updates.amount !== undefined ? updates.amount : oldAmount;
+            const oldAmount = Number(updatedPayments[payIdx].amount) || 0;
+            const newAmount = updates.amount !== undefined && !isNaN(Number(updates.amount)) ? Number(updates.amount) : oldAmount;
 
             updatedPayments[payIdx] = {
                 ...updatedPayments[payIdx],
@@ -994,21 +1072,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 date: updates.date !== undefined ? updates.date : updatedPayments[payIdx].date
             };
 
-            const diff = newAmount - oldAmount;
-            const newRemaining = (sale.remainingBalance || 0) - diff;
+            const rawDiff = newAmount - oldAmount;
+            const diff = isNaN(rawDiff) ? 0 : rawDiff;
+            const currentRemaining = Number(sale.remainingBalance) || 0;
+            const newRemaining = Math.max(0, currentRemaining - diff);
 
             batch.update(saleRef, {
                 payments: updatedPayments,
                 remainingBalance: newRemaining,
-                status: newRemaining <= 0 ? 'Paid' : 'Pending'
+                status: newRemaining <= 0.01 ? 'Paid' : 'Pending'
             });
 
             if (sale.customerId) {
                 const customer = customers.find(c => c.id === sale.customerId);
                 if (customer) {
                     const customerRef = doc(db, COLLECTIONS.customers, customer.id);
+                    const currentCustomerBalance = Number(customer.balance);
+                    const baseBalance = isNaN(currentCustomerBalance) ? calculateCustomerDebt(customer.id) : currentCustomerBalance;
                     batch.update(customerRef, {
-                        balance: Math.max(0, customer.balance - diff)
+                        balance: Math.max(0, baseBalance - diff)
                     });
                 }
             }
@@ -1212,10 +1294,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
 
                 // 3. Update customer balance
-                const balanceDiff = totalOldAmount - updates.amount;
-                batch.update(doc(db, COLLECTIONS.customers, targetCustomerId), {
-                    balance: increment(balanceDiff)
-                });
+                const safeUpdateAmount = Number(updates.amount) || 0;
+                const rawBalanceDiff = totalOldAmount - safeUpdateAmount;
+                const balanceDiff = isNaN(rawBalanceDiff) ? 0 : rawBalanceDiff;
+                if (targetCustomerId) {
+                    const customer = customers.find(c => c.id === targetCustomerId);
+                    const currentCustomerBalance = customer ? Number(customer.balance) : NaN;
+                    if (isNaN(currentCustomerBalance)) {
+                        const realBalance = calculateCustomerDebt(targetCustomerId);
+                        batch.update(doc(db, COLLECTIONS.customers, targetCustomerId), {
+                            balance: Math.max(0, realBalance + balanceDiff)
+                        });
+                    } else {
+                        batch.update(doc(db, COLLECTIONS.customers, targetCustomerId), {
+                            balance: increment(balanceDiff)
+                        });
+                    }
+                }
             }
 
             await batch.commit();
@@ -1259,10 +1354,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             // 2. Revert customer balance
             if (targetCustomerId) {
-                const customerRef = doc(db, COLLECTIONS.customers, targetCustomerId);
-                batch.update(customerRef, {
-                    balance: increment(totalToRevert)
-                });
+                const customer = customers.find(c => c.id === targetCustomerId);
+                const currentCustomerBalance = customer ? Number(customer.balance) : NaN;
+                if (isNaN(currentCustomerBalance)) {
+                    const realBalance = calculateCustomerDebt(targetCustomerId);
+                    batch.update(doc(db, COLLECTIONS.customers, targetCustomerId), {
+                        balance: realBalance + totalToRevert
+                    });
+                } else {
+                    const customerRef = doc(db, COLLECTIONS.customers, targetCustomerId);
+                    batch.update(customerRef, {
+                        balance: increment(totalToRevert)
+                    });
+                }
             }
 
             await batch.commit();
@@ -1310,6 +1414,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             restoreBackup,
             deleteGroupedPayment,
             updateAlarmStatus,
+            calculateCustomerDebt,
             error,
             clearError,
         }}>
