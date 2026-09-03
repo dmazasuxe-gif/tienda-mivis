@@ -40,6 +40,15 @@
   3. Se blindaron todos los métodos de actualización (`updateSaleItemDetail`, `updatePaymentDetail`, `updateGroupedPayment`, `deleteSale`, `deletePaymentFromSale`, etc.) y todos los inputs de la vista de clientes.
   4. Se desplegó a producción en Vercel mediante commit `38675e5` en la rama `main`.
 
+### Optimización y Corrección del Login en Nuevos Dispositivos (Septiembre 2026)
+- **Problema:** En dispositivos nuevos o navegadores en modo incógnito no se podía iniciar sesión usando el usuario y contraseña ya creados, mostrando erróneamente *"Usuario o contraseña no autorizados o inexistentes"*, mientras que en dispositivos previamente utilizados sí permitía el ingreso.
+- **Causa Raíz:** En `src/app/login/page.tsx`, el formulario validaba las credenciales de forma síncrona contra el arreglo en memoria `settings.authorizedAdmins` antes de consultar a Firebase Auth. En dispositivos con caché local (`IndexedDB`) ya existía la lista real, pero en dispositivos nuevos `settings` se inicializaba con valores por defecto hasta que Firestore descargaba la configuración por internet. Si el usuario enviaba el formulario antes de terminar la descarga, la búsqueda fallaba localmente y rechazaba el acceso sin llegar a consultar a Firebase Authentication.
+- **Solución Implementada:**
+  1. Se implementó una **vía rápida directa (fast-path)** que autentica inmediatamente con Firebase Authentication en la nube (~200ms) sin depender de la descarga de Firestore ni del caché local.
+  2. Se configuró un **fallback inteligente con consulta remota en tiempo real** (`getDoc`) para usuarios recién creados en Ajustes que requieran auto-registro inicial.
+  3. Se añadió blindaje en `src/lib/firebase.ts` con fallback de inicialización ante navegadores que bloquean o restringen `IndexedDB` (como navegación privada en móviles).
+  4. Se removió el bloqueo innecesario del botón de login para evitar congelamientos por latencia.
+
 ---
 
 ## 🎯 Instrucciones para Futuras Sesiones

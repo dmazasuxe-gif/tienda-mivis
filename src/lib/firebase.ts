@@ -7,7 +7,7 @@
  */
 
 import { initializeApp, getApps } from 'firebase/app';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -38,9 +38,17 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
  * Enabled with persistence for offline reliability (crucial for iPad/Mobile).
  * Explicitly using 'default' as the database ID.
  */
-export const db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-}, 'default');
+let firestoreDb;
+try {
+    firestoreDb = initializeFirestore(app, {
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    }, 'default');
+} catch (err) {
+    console.warn("Firestore persistent cache fallback to default instance:", err);
+    firestoreDb = getFirestore(app, 'default');
+}
+export const db = firestoreDb;
+
 
 /** Firebase Authentication */
 export const auth = getAuth(app);

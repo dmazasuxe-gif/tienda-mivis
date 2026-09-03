@@ -8,6 +8,8 @@ import { useData } from '@/context/DataContext';
 import { useRouter } from 'next/navigation';
 import { LogIn, Eye, EyeOff, ShoppingBag, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 export default function LoginPage() {
     const { login, register, resetPassword } = useAuth();
@@ -92,43 +94,71 @@ export default function LoginPage() {
                 router.push('/admin');
             } else {
                 // Access User (Username + Password)
-                const authorizedFiltered = settings?.authorizedAdmins?.find(
-                    a => a.username.trim().toLowerCase() === cleanUsername && a.password.trim() === cleanPassword
-                );
+                const virtualEmail = cleanUsername.includes('@')
+                    ? cleanUsername
+                    : `${cleanUsername}@mivisshoping.com`;
 
-                if (!authorizedFiltered) {
-                    setError('Usuario o contraseña no autorizados o inexistentes.');
-                    setLoading(false);
-                    return;
-                }
-
-                // Internal users use a virtual email for Firebase Auth synchronization
-                const virtualEmail = `${cleanUsername}@mivisshoping.com`;
+                // 1. FAST-PATH: Try direct Firebase Auth login first (instant on any device, no Firestore lag)
+                let authSuccess = false;
                 try {
                     await login(virtualEmail, cleanPassword);
+                    authSuccess = true;
                     router.push('/admin');
-                } catch (err: unknown) {
-                    const error = err as { code?: string; message?: string };
-                    const isNewUser = error.code === 'auth/user-not-found' ||
-                        error.code === 'auth/invalid-credential' ||
-                        error.message?.includes('user-not-found');
+                    return;
+                } catch (authErr: unknown) {
+                    console.log('Direct auth attempt failed, checking database authorization...', authErr);
+                }
 
-                    if (isNewUser) {
+                if (!authSuccess) {
+                    // 2. FALLBACK: Check against authorizedAdmins in Firestore
+                    let authorizedList = settings?.authorizedAdmins;
+
+                    const hasLocalMatch = authorizedList?.some(
+                        a => a.username.trim().toLowerCase() === cleanUsername && a.password.trim() === cleanPassword
+                    );
+
+                    // If local state doesn't have the user (e.g. cold start on new device), fetch directly from Firestore
+                    if (!hasLocalMatch) {
                         try {
-                            // Automatically sync authorized list to Firebase Auth
-                            await register(virtualEmail, cleanPassword);
-                            router.push('/admin');
-                        } catch (regErr: unknown) {
-                            const regError = regErr as { code?: string };
-                            if (regError.code === 'auth/email-already-in-use') {
-                                setError('Usuario o contraseña incorrectos.');
-                            } else {
-                                console.error('Auto-registration error:', regErr);
-                                setError('Error de sincronización de seguridad. Contacta al admin principal.');
+                            const snap = await getDoc(doc(db, 'settings', 'config'));
+                            if (snap.exists()) {
+                                const data = snap.data() as { authorizedAdmins?: { username: string; password: string }[] };
+                                if (data?.authorizedAdmins) {
+                                    authorizedList = data.authorizedAdmins;
+                                }
                             }
+                        } catch (fetchErr) {
+                            console.warn('Fallback settings fetch error:', fetchErr);
                         }
-                    } else {
-                        throw err;
+                    }
+
+                    const isAuthorized = authorizedList?.some(
+                        a => a.username.trim().toLowerCase() === cleanUsername && a.password.trim() === cleanPassword
+                    );
+
+                    if (!isAuthorized) {
+                        setError('Usuario o contraseña no autorizados o inexistentes.');
+                        setLoading(false);
+                        setIsProcessing(false);
+                        return;
+                    }
+
+                    // 3. User is authorized in database -> auto-register / sync to Firebase Auth
+                    try {
+                        await register(virtualEmail, cleanPassword);
+                        router.push('/admin');
+                        return;
+                    } catch (regErr: unknown) {
+                        const regError = regErr as { code?: string };
+                        if (regError.code === 'auth/email-already-in-use') {
+                            setError('Credenciales incorrectas. Verifica tu contraseña.');
+                        } else {
+                            console.error('Auto-registration error:', regErr);
+                            setError('Error de sincronización de seguridad. Contacta al admin principal.');
+                        }
+                        setLoading(false);
+                        setIsProcessing(false);
+                        return;
                     }
                 }
             }
@@ -305,10 +335,10 @@ export default function LoginPage() {
                         {/* Submit button */}
                         <button
                             type="submit"
-                            disabled={loading || !settingsLoaded}
+                            disabled={loading}
                             className="w-full py-3.5 bg-gradient-to-r from-purple-600 to-pink-500 text-white rounded-xl font-bold shadow-lg shadow-purple-200 hover:shadow-xl hover:scale-[1.02] transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2 text-lg"
                         >
-                            {loading || !settingsLoaded ? (
+                            {loading ? (
                                 <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>
