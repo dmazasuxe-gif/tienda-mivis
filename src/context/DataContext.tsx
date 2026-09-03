@@ -1,9 +1,10 @@
 
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { AppData, Product, Sale, Customer, PaymentDetails } from '@/lib/types';
 import { db, auth } from '@/lib/firebase';
+import { getCacheItem, setCacheItem } from '@/lib/cache';
 import {
     collection,
     doc,
@@ -127,11 +128,47 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isLoading, setIsLoading] = useState(true);
     const [user, setUser] = useState<FirebaseUser | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const hasAutoHealedRef = useRef(false);
 
     const clearError = () => setError(null);
 
     // ────────────────────────────────────────────────
-    // Auth Listener
+    // 0. Cache-First Instant Hydration (0ms Startup)
+    // Loads products, settings, customers, and sales from IndexedDB
+    // ────────────────────────────────────────────────
+    useEffect(() => {
+        let isMounted = true;
+        Promise.all([
+            getCacheItem<Product[]>('mivis_cache_products'),
+            getCacheItem<AppData['settings']>('mivis_cache_settings'),
+            getCacheItem<Customer[]>('mivis_cache_customers'),
+            getCacheItem<Sale[]>('mivis_cache_sales')
+        ]).then(([cachedProducts, cachedSettings, cachedCustomers, cachedSales]) => {
+            if (!isMounted) return;
+            if (cachedProducts && cachedProducts.length > 0) {
+                setProducts(cachedProducts);
+                setIsProductsLoading(false);
+            }
+            if (cachedSettings) {
+                setSettings(cachedSettings);
+            }
+            if (cachedCustomers && cachedCustomers.length > 0) {
+                setCustomers(cachedCustomers);
+            }
+            if (cachedSales && cachedSales.length > 0) {
+                setSales(cachedSales);
+            }
+        }).catch((err) => {
+            console.warn('Initial cache hydration warning:', err);
+        });
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
+    // ────────────────────────────────────────────────
+    // 1. Auth Listener
     // ────────────────────────────────────────────────
     useEffect(() => {
         return onAuthStateChanged(auth, (u) => {
@@ -141,24 +178,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     // ────────────────────────────────────────────────
-    // Real-time Firestore Settings listener (Always active for LoginPage check)
+    // 2. Real-time Firestore Settings listener
     // ────────────────────────────────────────────────
     useEffect(() => {
         const unsubSettings = onSnapshot(
             doc(db, COLLECTIONS.settings, 'config'),
             (snapshot) => {
                 if (snapshot.exists()) {
-                    setSettings(snapshot.data() as AppData['settings']);
+                    const data = snapshot.data() as AppData['settings'];
+                    setSettings(data);
+                    setCacheItem('mivis_cache_settings', data);
                 } else {
                     setSettings(DEFAULT_SETTINGS);
                 }
             },
             (error) => {
-                // If permissions are missing (not logged in), we just wait.
-                if (error.code === 'permission-denied') {
-                    // console.warn('Settings access deferred');
-                } else {
-                    console.error('Firestore settings error:', error);
+                if (error.code !== 'permission-denied') {
+                    console.warn('Firestore settings note (using cached/default):', error.message || error);
                 }
             }
         );
@@ -166,8 +202,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, []);
 
     // ────────────────────────────────────────────────
-    // Real-time Firestore Products listener (Public Access)
-    // Fast-path direct getDocs + onSnapshot for instant loading
+    // 3. Real-time Firestore Products listener (Public Access)
+    // Single-stream listener (no duplicate getDocs to save 50% reads)
     // ────────────────────────────────────────────────
     useEffect(() => {
         let isCancelled = false;
@@ -179,25 +215,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         }, 3500);
 
-        // 1. Fast-path: Direct HTTP getDocs for immediate first render (~300ms)
-        getDocs(collection(db, COLLECTIONS.products))
-            .then((snapshot) => {
-                if (isCancelled) return;
-                if (!snapshot.empty) {
-                    const items: Product[] = snapshot.docs.map(doc => ({
-                        ...doc.data(),
-                        id: doc.id,
-                    } as Product));
-                    setProducts(items);
-                    setIsProductsLoading(false);
-                    clearTimeout(safetyTimer);
-                }
-            })
-            .catch((err) => {
-                console.warn('Fast products fetch fallback to snapshot listener:', err);
-            });
-
-        // 2. Real-time subscription for live inventory and price updates
         const unsubProducts = onSnapshot(
             collection(db, COLLECTIONS.products),
             (snapshot) => {
@@ -209,16 +226,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setProducts(items);
                 setIsProductsLoading(false);
                 clearTimeout(safetyTimer);
+                // Asynchronously persist to high-capacity IndexedDB cache
+                setCacheItem('mivis_cache_products', items);
             },
             (error) => {
                 if (!isCancelled) {
                     setIsProductsLoading(false);
                 }
-                if (error.code === 'permission-denied') {
-                    console.warn('Products access denied. Check Firebase Security Rules.');
-                } else {
-                    console.error('Firestore products error:', error);
-                }
+                console.warn('Firestore products notice (serving from cache if available):', error.message || error);
+                // Fallback to local cache if state is currently empty
+                getCacheItem<Product[]>('mivis_cache_products').then((cached) => {
+                    if (!isCancelled && cached && cached.length > 0) {
+                        setProducts(cached);
+                    }
+                });
             }
         );
 
@@ -229,8 +250,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, []);
 
+    // ────────────────────────────────────────────────
+    // 4. Authenticated Admin Data (Sales & Customers)
+    // ────────────────────────────────────────────────
     useEffect(() => {
-        // If not authenticated, don't start listeners for sensitive data
+        // If not authenticated, clear sensitive lists from view
         if (!user) {
             setSales([]);
             setCustomers([]);
@@ -242,7 +266,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let loadedCollections = 0;
         const totalCollections = 2; // Sales and Customers
 
-        // Safety timeout so UI is NEVER blocked indefinitely on slow networks or cold start
+        // Safety timeout so UI is NEVER blocked indefinitely on slow networks or quota limits
         const safetyTimer = setTimeout(() => {
             setIsLoading(false);
         }, 3500);
@@ -255,7 +279,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         };
 
-        // 1. Sales listener (No limit - loads all sales to avoid losing historical customer data)
+        // 1. Sales listener
         const unsubSales = onSnapshot(
             query(collection(db, COLLECTIONS.sales), orderBy('date', 'desc')),
             (snapshot) => {
@@ -264,15 +288,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     id: doc.id,
                 } as Sale));
                 setSales(items);
+                setCacheItem('mivis_cache_sales', items);
                 checkReady();
             },
             (error) => {
-                console.error('Firestore sales error:', error);
+                console.warn('Firestore sales notice (serving from cache if available):', error.message || error);
+                getCacheItem<Sale[]>('mivis_cache_sales').then((cached) => {
+                    if (cached && cached.length > 0) {
+                        setSales(cached);
+                    }
+                });
                 checkReady();
             }
         );
 
-        // 2. Customers listener (No limit - loads all customers)
+        // 2. Customers listener
         const unsubCustomers = onSnapshot(
             collection(db, COLLECTIONS.customers),
             (snapshot) => {
@@ -286,10 +316,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     } as Customer;
                 });
                 setCustomers(items);
+                setCacheItem('mivis_cache_customers', items);
                 checkReady();
             },
             (error) => {
-                console.error('Firestore customers error:', error);
+                console.warn('Firestore customers notice (serving from cache if available):', error.message || error);
+                getCacheItem<Customer[]>('mivis_cache_customers').then((cached) => {
+                    if (cached && cached.length > 0) {
+                        setCustomers(cached);
+                    }
+                });
                 checkReady();
             }
         );
@@ -306,10 +342,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return computeCustomerDebtFromSales(customerId, sales);
     }, [sales]);
 
-    // Auto-heal customers with NaN balance in Firestore
+    // Auto-heal customers with NaN balance in Firestore (Runs once per session to avoid loops)
     useEffect(() => {
-        if (!user || isLoading || !sales.length || !customers.length) return;
+        if (!user || isLoading || !sales.length || !customers.length || hasAutoHealedRef.current) return;
 
+        hasAutoHealedRef.current = true;
         customers.forEach(customer => {
             const rawBalance = Number(customer.balance);
             if (isNaN(rawBalance)) {

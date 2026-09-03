@@ -106,6 +106,17 @@ export default function LoginPage() {
                     router.push('/admin');
                     return;
                 } catch (authErr: unknown) {
+                    // Try alternative spelling with double 'p' if single 'p' failed
+                    if (!cleanUsername.includes('@')) {
+                        try {
+                            await login(`${cleanUsername}@mivisshopping.com`, cleanPassword);
+                            authSuccess = true;
+                            router.push('/admin');
+                            return;
+                        } catch {
+                            // Proceed to database authorization check
+                        }
+                    }
                     console.log('Direct auth attempt failed, checking database authorization...', authErr);
                 }
 

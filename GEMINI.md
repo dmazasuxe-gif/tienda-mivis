@@ -81,6 +81,18 @@
   4. Se removió la serialización excesiva a `localStorage` que causaba caídas de frames y errores de cuota en móviles.
   5. Se incorporó un temporizador de seguridad de 3.5s para `isProductsLoading`.
 
+### Solución de Raíz: Carga Universal en Todos los Dispositivos y Resiliencia de Cuota Firestore (Septiembre 2026)
+- **Problema:** Al acceder al sistema desde otros dispositivos (celular, tablet, otra computadora o ventana privada/incógnito), no cargaban los clientes, productos, ventas ni el dashboard, mostrando un sistema vacío o *"No hay productos disponibles"*.
+- **Causa Raíz:**
+  1. **Agotamiento de cuota diaria en Firestore (`Quota limit exceeded`):** El proyecto Firebase (`mivisshopping`) en el Plan Spark gratuito tiene un límite de 50,000 lecturas diarias. Se agotó por doble lectura simultánea (`getDocs` + `onSnapshot`) en cada visita.
+  2. **Comportamiento dispar entre dispositivos:** En la computadora habitual, Firestore cargaba los datos desde su caché interna en IndexedDB; pero en nuevos dispositivos o ventanas privadas sin caché previa, las peticiones remotas eran rechazadas por Firestore (`Quota exceeded`), provocando que el código vaciara el estado a listas vacías `[]`.
+- **Solución Implementada:**
+  1. **Caché Universal Nativo en IndexedDB (`src/lib/cache.ts`):** Sistema de almacenamiento local persistente de alta capacidad para productos, clientes, ventas y configuraciones sin límite de 5 MB ni caídas de frame.
+  2. **Hidratación Instantánea (0ms) en `DataContext.tsx`:** Al abrir la aplicación en cualquier dispositivo, se hidrata inmediatamente desde IndexedDB. La pantalla nunca queda en blanco.
+  3. **Eliminación de la Doble Lectura:** Se eliminó la llamada duplicada `getDocs` manteniendo un único flujo reactivo con `onSnapshot`, reduciendo el consumo de lecturas de Firestore en un 50%.
+  4. **Protección contra Bloqueos y Bucles:** Ante fallos de cuota o falta de conexión, el sistema mantiene los datos locales sin vaciar las listas. Se blindó la auto-reparación de balance con `hasAutoHealedRef` para evitar loops de escritura y lectura.
+  5. **Doble Fallback de Dominio en Login:** Se incorporó soporte para `@mivisshopping.com` y `@mivisshoping.com` en la vía rápida de autenticación directa.
+
 ---
 
 ## 🎯 Instrucciones para Futuras Sesiones
