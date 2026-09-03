@@ -14,7 +14,7 @@ import {
 import ProductTicker from '@/components/ProductTicker';
 
 export default function Home() {
-  const { products, settings } = useData();
+  const { products, settings, isProductsLoading } = useData();
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -288,81 +288,101 @@ export default function Home() {
             </AnimatePresence>
           </div>
 
-          {/* Product Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8">
-            {filteredProducts.map((product, idx) => (
-              <motion.div
-                key={product.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.05 }}
-                className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 cursor-pointer"
-                onClick={() => openProduct(product)}
-              >
-                {/* Product Image */}
-                <div className="relative aspect-[4/5] bg-gray-100 overflow-hidden">
-                  <div className="absolute top-2 right-2 z-10">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id); }}
-                      className="p-2 bg-white/80 backdrop-blur-sm rounded-full text-gray-500 hover:text-red-500 hover:bg-white transition-colors shadow-sm"
-                      aria-label="Agregar a favoritos"
-                    >
-                      <Heart size={16} className={favorites.has(product.id) ? 'fill-red-500 text-red-500' : ''} />
-                    </button>
-                  </div>
-                  {product.images?.[0] ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={product.images[0]}
-                      alt={product.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50 text-gray-300 group-hover:scale-105 transition-transform duration-500">
-                      <Package size={40} />
-                      <span className="text-xs mt-2 font-medium">Sin imagen</span>
+          {/* Product Grid or Skeleton Loading */}
+          {isProductsLoading && filteredProducts.length === 0 ? (
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="bg-white rounded-2xl overflow-hidden border border-gray-100 shadow-sm animate-pulse">
+                  <div className="aspect-[4/5] bg-gray-200" />
+                  <div className="p-3 md:p-5 space-y-3">
+                    <div className="h-4 bg-gray-200 rounded-md w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded-md w-full" />
+                    <div className="flex justify-between items-center pt-2">
+                      <div className="h-5 bg-gray-200 rounded-md w-1/3" />
+                      <div className="h-9 w-9 bg-gray-200 rounded-xl" />
                     </div>
-                  )}
-                  {product.stock < 5 && (
-                    <div className="absolute bottom-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">
-                      ¡ÚLTIMAS UNIDADES!
-                    </div>
-                  )}
-                </div>
-
-                {/* Product Info */}
-                <div className="p-3 md:p-5">
-                  <div className="flex justify-between items-start mb-1 md:mb-2">
-                    <h3 className="font-bold text-gray-900 group-hover:text-purple-600 transition-colors line-clamp-1 text-sm md:text-base">
-                      {product.name}
-                    </h3>
-                    <div className="hidden md:flex items-center gap-1 text-xs font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded-lg flex-shrink-0 ml-2">
-                      <Star size={10} className="text-yellow-500 fill-yellow-500" /> 4.9
-                    </div>
-                  </div>
-                  <p className="text-xs md:text-sm text-gray-500 line-clamp-2 mb-3 md:mb-4 h-8 md:h-10">{product.description}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg md:text-xl font-bold text-gray-900">S/ {product.salePrice.toFixed(2)}</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); openProduct(product); }}
-                      className="p-2 md:p-3 bg-gray-900 text-white rounded-xl hover:bg-purple-600 transition-colors shadow-lg shadow-gray-200"
-                      aria-label="Ver producto"
-                    >
-                      <ShoppingBag size={16} />
-                    </button>
                   </div>
                 </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {filteredProducts.length === 0 && (
-            <div className="text-center py-20">
-              <Package size={48} className="mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-500 text-lg">No hay productos disponibles.</p>
-              <p className="text-gray-400 text-sm mt-1">¡Vuelve pronto!</p>
+              ))}
             </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-8">
+                {filteredProducts.map((product, idx) => (
+                  <motion.div
+                    key={product.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 cursor-pointer"
+                    onClick={() => openProduct(product)}
+                  >
+                    {/* Product Image */}
+                    <div className="relative aspect-[4/5] bg-gray-100 overflow-hidden">
+                      <div className="absolute top-2 right-2 z-10">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleFavorite(product.id); }}
+                          className="p-2 bg-white/80 backdrop-blur-sm rounded-full text-gray-500 hover:text-red-500 hover:bg-white transition-colors shadow-sm"
+                          aria-label="Agregar a favoritos"
+                        >
+                          <Heart size={16} className={favorites.has(product.id) ? 'fill-red-500 text-red-500' : ''} />
+                        </button>
+                      </div>
+                      {product.images?.[0] ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={product.images[0]}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50 text-gray-300 group-hover:scale-105 transition-transform duration-500">
+                          <Package size={40} />
+                          <span className="text-xs mt-2 font-medium">Sin imagen</span>
+                        </div>
+                      )}
+                      {product.stock < 5 && (
+                        <div className="absolute bottom-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">
+                          ¡ÚLTIMAS UNIDADES!
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Product Info */}
+                    <div className="p-3 md:p-5">
+                      <div className="flex justify-between items-start mb-1 md:mb-2">
+                        <h3 className="font-bold text-gray-900 group-hover:text-purple-600 transition-colors line-clamp-1 text-sm md:text-base">
+                          {product.name}
+                        </h3>
+                        <div className="hidden md:flex items-center gap-1 text-xs font-bold text-gray-900 bg-gray-100 px-2 py-1 rounded-lg flex-shrink-0 ml-2">
+                          <Star size={10} className="text-yellow-500 fill-yellow-500" /> 4.9
+                        </div>
+                      </div>
+                      <p className="text-xs md:text-sm text-gray-500 line-clamp-2 mb-3 md:mb-4 h-8 md:h-10">{product.description}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-lg md:text-xl font-bold text-gray-900">S/ {product.salePrice.toFixed(2)}</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openProduct(product); }}
+                          className="p-2 md:p-3 bg-gray-900 text-white rounded-xl hover:bg-purple-600 transition-colors shadow-lg shadow-gray-200"
+                          aria-label="Ver producto"
+                        >
+                          <ShoppingBag size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+
+              {filteredProducts.length === 0 && (
+                <div className="text-center py-20">
+                  <Package size={48} className="mx-auto text-gray-300 mb-4" />
+                  <p className="text-gray-500 text-lg">No hay productos disponibles.</p>
+                  <p className="text-gray-400 text-sm mt-1">¡Vuelve pronto!</p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </section >

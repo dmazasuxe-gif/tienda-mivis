@@ -7,7 +7,7 @@
  */
 
 import { initializeApp, getApps } from 'firebase/app';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
@@ -41,7 +41,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0
 let firestoreDb;
 try {
     firestoreDb = initializeFirestore(app, {
-        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) })
     }, 'default');
 } catch (err) {
     console.warn("Firestore persistent cache fallback to default instance:", err);

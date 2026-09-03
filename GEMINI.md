@@ -49,6 +49,18 @@
   3. Se añadió blindaje en `src/lib/firebase.ts` con fallback de inicialización ante navegadores que bloquean o restringen `IndexedDB` (como navegación privada en móviles).
   4. Se removió el bloqueo innecesario del botón de login para evitar congelamientos por latencia.
 
+### Optimización de Velocidad y Carga Rápida en Nuevos Dispositivos (Septiembre 2026)
+- **Problema:** La página pública demoraba en cargar productos en otros dispositivos/navegadores, y al ingresar al sistema administrativo tardaba varios minutos en una pantalla de carga congelada (*"Cargando Mivis Studio Glam..."*).
+- **Causa Raíz:**
+  1. `persistentMultipleTabManager()` de Firestore coordinaba pestañas mediante bloqueos (`navigator.locks`). En pestañas en segundo plano o navegadores móviles (iOS/Android) donde el navegador suspende timers, los bloqueos retenían la conexión, provocando esperas de hasta 5 minutos antes de responder las consultas en nuevas pestañas.
+  2. En `src/app/admin/layout.tsx`, la interfaz se bloqueaba a pantalla completa mientras `sales` y `customers` terminaban de descargar todas las colecciones.
+  3. En la página pública, mientras los productos (que contienen imágenes en Base64 de ~5.5MB) se descargaban por internet, se mostraba erróneamente *"No hay productos disponibles"*.
+- **Solución Implementada:**
+  1. Se cambió el gestor de caché de Firestore a `persistentSingleTabManager({})` en `src/lib/firebase.ts`, eliminando la contención de bloqueos entre pestañas y acelerando la conexión inicial.
+  2. Se añadió temporizador de seguridad de liberación automática (3.5s) en `DataContext.tsx` para evitar que la interfaz administrativa quede bloqueada indefinidamente por latencia de red.
+  3. Se desacopló el bloqueo a pantalla completa en `AdminLayout`: una vez autenticado el usuario, el panel y barra lateral se renderizan inmediatamente con un indicador no intrusivo mientras los datos sincronizan en segundo plano.
+  4. Se implementó caché de productos en `localStorage` para cargas inmediatas (0ms) en visitas recurrentes y un Skeleton Loader elegante con animación shimmer para la primera visita en frío.
+
 ---
 
 ## 🎯 Instrucciones para Futuras Sesiones

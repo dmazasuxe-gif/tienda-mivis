@@ -27,12 +27,12 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
         }
     }, [user, authLoading, router]);
 
-    if (authLoading || dataLoading) {
+    if (authLoading) {
         return (
             <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center space-y-4">
                     <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin mx-auto" />
-                    <p className="text-gray-500 font-medium tracking-tight">Cargando Mivis Studio Glam...</p>
+                    <p className="text-gray-500 font-medium tracking-tight">Verificando acceso a Mivis Studio Glam...</p>
                 </div>
             </div>
         );
@@ -54,6 +54,15 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
                 )}
             >
                 <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
+                    {dataLoading && (
+                        <div className="bg-purple-50 border border-purple-200 text-purple-700 text-xs font-semibold px-4 py-2 rounded-xl flex items-center justify-between shadow-sm animate-pulse">
+                            <span className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-purple-600 animate-ping" />
+                                Sincronizando datos en tiempo real...
+                            </span>
+                            <span className="text-[10px] text-purple-400">Actualizando</span>
+                        </div>
+                    )}
                     {children}
                 </div>
             </main>

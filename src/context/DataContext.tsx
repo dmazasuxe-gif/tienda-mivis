@@ -28,6 +28,7 @@ import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 interface DataContextType extends AppData {
     isLoading: boolean;
+    isProductsLoading: boolean;
     user: FirebaseUser | null;
     error: string | null;
     clearError: () => void;
@@ -117,7 +118,23 @@ const DEFAULT_SETTINGS: AppData['settings'] = {
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [products, setProducts] = useState<Product[]>([]);
+    const [isProductsLoading, setIsProductsLoading] = useState(true);
+    const [products, setProducts] = useState<Product[]>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const cached = localStorage.getItem('mivis_products_cache');
+                if (cached) {
+                    const parsed = JSON.parse(cached);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        return parsed;
+                    }
+                }
+            } catch (e) {
+                // Ignore storage parsing errors
+            }
+        }
+        return [];
+    });
     const [sales, setSales] = useState<Sale[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [settings, setSettings] = useState<AppData['settings']>(DEFAULT_SETTINGS);
@@ -174,10 +191,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     id: doc.id,
                 } as Product));
                 setProducts(items);
+                setIsProductsLoading(false);
+                if (typeof window !== 'undefined' && items.length > 0) {
+                    try {
+                        localStorage.setItem('mivis_products_cache', JSON.stringify(items));
+                    } catch (e) {
+                        // Storage full or restricted
+                    }
+                }
             },
             (error) => {
+                setIsProductsLoading(false);
                 if (error.code === 'permission-denied') {
-                    // Public read might be disabled in Firebase Rules
                     console.warn('Products access denied. Check Firebase Security Rules.');
                 } else {
                     console.error('Firestore products error:', error);
@@ -200,9 +225,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         let loadedCollections = 0;
         const totalCollections = 2; // Sales and Customers
 
+        // Safety timeout so UI is NEVER blocked indefinitely on slow networks or cold start
+        const safetyTimer = setTimeout(() => {
+            setIsLoading(false);
+        }, 3500);
+
         const checkReady = () => {
             loadedCollections++;
             if (loadedCollections >= totalCollections) {
+                clearTimeout(safetyTimer);
                 setIsLoading(false);
             }
         };
@@ -247,6 +278,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
 
         return () => {
+            clearTimeout(safetyTimer);
             unsubSales();
             unsubCustomers();
         };
@@ -1385,6 +1417,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             customers,
             settings,
             isLoading,
+            isProductsLoading,
             user,
             addProduct,
             updateProduct,
