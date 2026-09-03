@@ -61,6 +61,13 @@
   3. Se desacopló el bloqueo a pantalla completa en `AdminLayout`: una vez autenticado el usuario, el panel y barra lateral se renderizan inmediatamente con un indicador no intrusivo mientras los datos sincronizan en segundo plano.
   4. Se implementó caché de productos en `localStorage` para cargas inmediatas (0ms) en visitas recurrentes y un Skeleton Loader elegante con animación shimmer para la primera visita en frío.
 
+### Corrección de Notificaciones de Error de Despliegue en Vercel (Septiembre 2026)
+- **Problema:** El usuario recibía correos de Vercel indicando que el despliegue fallaba, a pesar de que el sitio oficial `tienda-mivis-917w` (`www.mivisstudioglam.com`) estaba activo y en verde.
+- **Causa Raíz:** El repositorio en GitHub (`tienda-mivis`) estaba conectado simultáneamente a 3 proyectos en la cuenta de Vercel: `tienda-mivis-917w` (producción oficial con dominio), `tienda-mivis` y un proyecto antiguo llamado `tiendavirtual`. Este último proyecto no tenía cargadas las variables de entorno de Firebase en su panel de Vercel. Al pre-renderizar `/_not-found` durante el build en Vercel, Firebase arrojaba `auth/invalid-api-key`, provocando que Vercel enviara un correo de alerta de fallo por el proyecto `tiendavirtual`.
+- **Solución Implementada:**
+  1. Se incorporaron fallbacks con las credenciales públicas del proyecto en `src/lib/firebase.ts`. Esto garantiza que cualquier proyecto o entorno (con o sin variables de entorno configuradas) compile limpiamente en Next.js sin errores de inicialización de Firebase.
+  2. Se verificó mediante Vercel CLI que los 3 proyectos vinculados (`tienda-mivis-917w`, `tienda-mivis` y `tiendavirtual`) ahora compilan y despliegan en estado **● Ready** al 100%.
+
 ---
 
 ## 🎯 Instrucciones para Futuras Sesiones
