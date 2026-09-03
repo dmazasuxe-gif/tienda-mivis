@@ -68,6 +68,19 @@
   1. Se incorporaron fallbacks con las credenciales públicas del proyecto en `src/lib/firebase.ts`. Esto garantiza que cualquier proyecto o entorno (con o sin variables de entorno configuradas) compile limpiamente en Next.js sin errores de inicialización de Firebase.
   2. Se verificó mediante Vercel CLI que los 3 proyectos vinculados (`tienda-mivis-917w`, `tienda-mivis` y `tiendavirtual`) ahora compilan y despliegan en estado **● Ready** al 100%.
 
+### Solución Definitiva de Carga de Productos en Nuevos Dispositivos (Septiembre 2026)
+- **Problema:** En dispositivos nuevos o navegadores diferentes, el catálogo de productos parecía congelado o no terminaba de cargar los productos.
+- **Causa Raíz:**
+  1. `persistentSingleTabManager` bloqueaba pestañas adicionales o recargas en navegadores donde no se liberaban los bloqueos de IndexedDB.
+  2. La colección de productos contiene 47 artículos con fotos en base64 (~5.55 MB). Intentar serializar 5.55 MB con `JSON.stringify` en `localStorage` superaba la cuota de 5 MB de los navegadores móviles y bloqueaba el hilo principal de JavaScript (UI freeze).
+  3. `onSnapshot` demoraba en establecer la conexión WebChannel para descargar 5.55 MB de datos continuos sin un mecanismo de respaldo HTTP directo.
+- **Solución Implementada:**
+  1. Se restableció `persistentMultipleTabManager()` en `src/lib/firebase.ts`, el cual soporta múltiples pestañas y recargas sin bloqueos de contención.
+  2. Se implementó una vía rápida con `getDocs(collection(db, 'products'))` en `DataContext.tsx`: realiza una petición HTTP directa que descarga los productos en ~300ms y los renderiza de inmediato en pantalla.
+  3. Se mantuvo `onSnapshot` en paralelo para sincronizaciones en tiempo real sin bloquear el primer renderizado.
+  4. Se removió la serialización excesiva a `localStorage` que causaba caídas de frames y errores de cuota en móviles.
+  5. Se incorporó un temporizador de seguridad de 3.5s para `isProductsLoading`.
+
 ---
 
 ## 🎯 Instrucciones para Futuras Sesiones

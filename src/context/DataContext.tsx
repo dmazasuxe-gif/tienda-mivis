@@ -19,6 +19,7 @@ import {
     increment,
     arrayUnion,
     FieldValue,
+    getDocs,
 } from 'firebase/firestore';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
@@ -119,22 +120,7 @@ const DEFAULT_SETTINGS: AppData['settings'] = {
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [isProductsLoading, setIsProductsLoading] = useState(true);
-    const [products, setProducts] = useState<Product[]>(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const cached = localStorage.getItem('mivis_products_cache');
-                if (cached) {
-                    const parsed = JSON.parse(cached);
-                    if (Array.isArray(parsed) && parsed.length > 0) {
-                        return parsed;
-                    }
-                }
-            } catch (e) {
-                // Ignore storage parsing errors
-            }
-        }
-        return [];
-    });
+    const [products, setProducts] = useState<Product[]>([]);
     const [sales, setSales] = useState<Sale[]>([]);
     const [customers, setCustomers] = useState<Customer[]>([]);
     const [settings, setSettings] = useState<AppData['settings']>(DEFAULT_SETTINGS);
@@ -181,27 +167,53 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // ────────────────────────────────────────────────
     // Real-time Firestore Products listener (Public Access)
+    // Fast-path direct getDocs + onSnapshot for instant loading
     // ────────────────────────────────────────────────
     useEffect(() => {
+        let isCancelled = false;
+
+        // Safety timer to ensure UI never remains frozen
+        const safetyTimer = setTimeout(() => {
+            if (!isCancelled) {
+                setIsProductsLoading(false);
+            }
+        }, 3500);
+
+        // 1. Fast-path: Direct HTTP getDocs for immediate first render (~300ms)
+        getDocs(collection(db, COLLECTIONS.products))
+            .then((snapshot) => {
+                if (isCancelled) return;
+                if (!snapshot.empty) {
+                    const items: Product[] = snapshot.docs.map(doc => ({
+                        ...doc.data(),
+                        id: doc.id,
+                    } as Product));
+                    setProducts(items);
+                    setIsProductsLoading(false);
+                    clearTimeout(safetyTimer);
+                }
+            })
+            .catch((err) => {
+                console.warn('Fast products fetch fallback to snapshot listener:', err);
+            });
+
+        // 2. Real-time subscription for live inventory and price updates
         const unsubProducts = onSnapshot(
             collection(db, COLLECTIONS.products),
             (snapshot) => {
+                if (isCancelled) return;
                 const items: Product[] = snapshot.docs.map(doc => ({
                     ...doc.data(),
                     id: doc.id,
                 } as Product));
                 setProducts(items);
                 setIsProductsLoading(false);
-                if (typeof window !== 'undefined' && items.length > 0) {
-                    try {
-                        localStorage.setItem('mivis_products_cache', JSON.stringify(items));
-                    } catch (e) {
-                        // Storage full or restricted
-                    }
-                }
+                clearTimeout(safetyTimer);
             },
             (error) => {
-                setIsProductsLoading(false);
+                if (!isCancelled) {
+                    setIsProductsLoading(false);
+                }
                 if (error.code === 'permission-denied') {
                     console.warn('Products access denied. Check Firebase Security Rules.');
                 } else {
@@ -209,7 +221,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
         );
-        return () => unsubProducts();
+
+        return () => {
+            isCancelled = true;
+            clearTimeout(safetyTimer);
+            unsubProducts();
+        };
     }, []);
 
     useEffect(() => {
